@@ -142,6 +142,9 @@ Requires: [uv](https://docs.astral.sh/uv/), Docker, `pnpm` (for `apps/app`), and
 fonts that `pypdf` alone decodes incorrectly; the loader falls back to `pypdf` if `pdftotext`
 isn't installed.
 
+GNU `make` is optional. On Windows PowerShell, use `.\scripts\dev.ps1 <target>` instead
+(same names: `docker-up`, `migrate`, `seed`, `dev`, `test`).
+
 ```bash
 cp .env.example .env
 uv sync            # installs the whole Python workspace into one .venv
@@ -158,11 +161,18 @@ make docker-down     # stop and remove the container (add -v manually to also dr
 make docker-reset     # drop the volume and start fresh
 ```
 
+If host port 5432 is already taken, set `POSTGRES_PORT` **and** the port in
+`DATABASE_URL` in `.env` (this machine uses `5433` for that reason).
+
 ### Running the API
 
 ```bash
 make dev             # starts/waits-for Postgres, applies pending migrations, then uvicorn --reload on :8000
 curl localhost:8000/health
+```
+
+```powershell
+.\scripts\dev.ps1 dev    # Windows equivalent
 ```
 
 `make dev` depends on `make docker-up` (which blocks until Postgres's healthcheck passes) and
@@ -193,6 +203,22 @@ routed to `needs_review` -- the plan's contingency tables wrap cell text across 
 and the current heuristic, header-aware extractor reads one physical line at a time. That's the
 intended failure mode: incomplete/ambiguous rows are quarantined for a human, never
 auto-approved. See "Next recommended implementation" below.
+
+### Sirsa demo seed (frontend / advisory loop)
+
+Real ingest is 100% `needs_review` until extraction reassembly lands. For a clickable demo,
+three hand-curated rules that cite **pages that exist** (7, 9, 10 of the 31-page PDF) can be
+loaded through the same approve chokepoint as a human reviewer:
+
+```bash
+make seed    # Postgres must be up; idempotent
+```
+
+```powershell
+.\scripts\dev.ps1 seed    # Windows equivalent
+```
+
+Then `GET /rules?advisory_eligible=true` and `POST /advisories` (see `docs/api.md`).
 
 ### Running tests
 

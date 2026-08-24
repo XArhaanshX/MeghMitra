@@ -1,8 +1,9 @@
 # Database
 
-Single migration file so far: `db/migrations/0001_init.sql`, applied automatically on first
-`docker compose up -d` (mounted read-only at `/docker-entrypoint-initdb.d`) and re-appliable via
-`make migrate`.
+Single migration files so far: `0001_init.sql`, `0002_wire_trigger_emission.sql`. `0002` adds
+`trigger_events.block_key`, `trigger_events.reasons`, `advisories.action`, and
+`advisories.reason`, and backfills from the JSONB/`channel` workaround used before the
+columns existed.
 
 ## Core tables (used by code today)
 
@@ -27,11 +28,15 @@ Single migration file so far: `db/migrations/0001_init.sql`, applied automatical
 
 ## Future tables (placeholders, not wired to any code)
 
-`blocks`, `weather_observations`, `forecast_snapshots`, `soil_data`, `trigger_events`,
-`advisories`, `audit_logs`. Deliberately minimal (see the original bootstrap brief's "do not
-over-engineer these future tables yet"). `blocks.geom` is the one PostGIS-typed column
-(`GEOMETRY(MultiPolygon, 4326)`) -- confirms the `postgis` extension is live and usable once the
-trigger engine needs spatial joins.
+`blocks`, `weather_observations`, `forecast_snapshots`, `soil_data`, `audit_logs`.
+Deliberately minimal. `blocks.geom` is the one PostGIS-typed column
+(`GEOMETRY(MultiPolygon, 4326)`).
+
+`trigger_events` and `advisories` **are** written by `POST /advisories`
+(`apps/api/app/advisory.py`). Until a block registry exists, `trigger_events.block_id`
+(UUID FK to `blocks`) is left null; the moisture `block_id` string is stored in
+`trigger_events.block_key` (`0002_wire_trigger_emission.sql`). ABSTAIN does not insert an
+`advisories` row.
 
 ## Adding a migration
 
@@ -45,9 +50,10 @@ INSERT INTO schema_migrations (filename) VALUES ('NNNN_description.sql')
 ON CONFLICT (filename) DO NOTHING;
 ```
 
-`make migrate` reads `db/migrations/*.sql` in order and, for each file, skips it if its filename
-is already present in `schema_migrations` -- otherwise it applies the file (with
-`-v ON_ERROR_STOP=1`, so a real SQL error fails the target loudly) and the file's own footer
-records it. This makes `make migrate` safe to run repeatedly, including right after
-`make docker-up` (whose `docker-entrypoint-initdb.d` already auto-applied `0001_init.sql` on a
-fresh volume -- `make migrate` correctly sees it as already applied and skips it).
+`scripts/migrate.py` (via `make migrate` or `.\scripts\dev.ps1 migrate`) reads
+`db/migrations/*.sql` in order and, for each file, skips it if its filename is already present
+in `schema_migrations` -- otherwise it applies the file (with `-v ON_ERROR_STOP=1`, so a real
+SQL error fails the target loudly) and the file's own footer records it. This is safe to run
+repeatedly, including right after `docker-up` (whose `docker-entrypoint-initdb.d` already
+auto-applied `0001_init.sql` on a fresh volume -- migrate correctly sees it as already applied
+and skips it).

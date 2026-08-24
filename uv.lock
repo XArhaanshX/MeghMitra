@@ -38,6 +38,7 @@ dependencies = [
     { name = "document-intelligence" },
     { name = "fastapi" },
     { name = "pydantic-settings" },
+    { name = "trigger-engine" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -49,6 +50,7 @@ requires-dist = [
     { name = "document-intelligence", editable = "services/document-intelligence" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "pydantic-settings", specifier = ">=2.6" },
+    { name = "trigger-engine", editable = "services/trigger-engine" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]
 

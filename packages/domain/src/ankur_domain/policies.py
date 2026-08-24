@@ -94,14 +94,24 @@ def initial_review_status(draft: DACPRuleDraft) -> tuple[ReviewStatus, list[str]
     return status, reasons
 
 
-def can_approve(rule: DACPRule) -> tuple[bool, str | None]:
+def can_approve(rule: DACPRule, *, page_count: int | None = None) -> tuple[bool, str | None]:
     """Whether a rule is eligible to move to APPROVED.
 
     Enforces: no citation -> never approvable, period -- independent of who
     is asking or what confidence says. This is the one check that must never
     be bypassed.
+
+    `page_count` is an optional tightening forwarded to `has_valid_citation`.
+    When the source document is known, a page past the end of the file is
+    rejected. Omitting it preserves the original behaviour.
     """
-    if not has_valid_citation(rule.citation):
+    if not has_valid_citation(rule.citation, page_count=page_count):
+        if page_count is not None and rule.citation is not None and rule.citation.page > page_count:
+            return (
+                False,
+                f"cannot approve: citation page {rule.citation.page} "
+                f"exceeds document page_count {page_count}",
+            )
         return False, "cannot approve a rule without a valid citation"
     return True, None
 

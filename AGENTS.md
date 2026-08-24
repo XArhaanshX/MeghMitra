@@ -50,8 +50,12 @@ make format            # ruff format
 make docker-up         # Postgres/PostGIS; migrations auto-apply on first boot
 make migrate            # re-apply db/migrations/*.sql against a running container
 make ingest PDF=data/raw/HAR16-Sirsa-30-06-2011.pdf DISTRICT=Sirsa STATE=Haryana
+make seed              # 3 cited Sirsa demo rules (validate_draft then approve)
 make trigger-demo      # leave-one-season-out verification of the dry-spell model ladder
 ```
+
+On Windows without GNU make: `.\scripts\dev.ps1 <target>` (same target names: `docker-up`,
+`migrate`, `seed`, `dev`, `test`). Migrations are `uv run python scripts/migrate.py`.
 
 `make trigger-demo` runs on **synthetic** weather -- it verifies the pipeline is wired and
 fast, not that the forecast has skill. Real verification needs IMD gridded rainfall and ECMWF

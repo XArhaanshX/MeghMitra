@@ -7,6 +7,7 @@ dependencies = [
     "ankur-schemas",
     "ankur-domain",
     "document-intelligence",
+    "trigger-engine",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "asyncpg>=0.30",
@@ -17,6 +18,7 @@ dependencies = [
 ankur-schemas = { workspace = true }
 ankur-domain = { workspace = true }
 document-intelligence = { workspace = true }
+trigger-engine = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

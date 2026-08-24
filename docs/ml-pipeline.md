@@ -1,6 +1,9 @@
 # ML pipeline (trigger engine) — design
 
-Status: **plan only, nothing built.** For revision before implementation.
+Status: **first draft built** under `services/trigger-engine/` (synthetic weather,
+offline CLI via `make trigger-demo`). Real IMD/ECMWF adapters, spatial join, and
+serving into `trigger_events` are not wired. Diagram:
+[`ml-pipeline.excalidraw`](./ml-pipeline.excalidraw).
 Owner lane: Arhaansh (calibration, preprocessing, water-balance features).
 Reader prerequisites: `docs/architecture.md`, `docs/domain-model.md`.
 
@@ -129,28 +132,19 @@ All four citations are unverifiable, and rule #1 is seeded `review_status: "appr
 absolutely. If it ever leaks past tests into a seed script or demo database, Ankur cites a page
 that isn't there — on the one claim the whole product rests on.
 
-### 3.2 The citation invariant has no upper page bound
+### 3.2 Citation page bound (policy tightening, shipped)
 
-```python
-# packages/domain/src/ankur_domain/policies.py
-def has_valid_citation(citation: Citation | None) -> bool:
-    if citation is None:
-        return False
-    return bool(citation.document.strip()) and citation.page >= 1
-```
+`has_valid_citation(..., page_count=)` and `can_approve(..., page_count=)` now reject a page
+past the end of the source file when the caller knows `document.page_count`. Omitting
+`page_count` preserves the original `page >= 1` behaviour, so existing unbound call sites
+(including `data/fixtures/sirsa_dacp.json` pages 37–44, which have no `document_id`) do not
+change meaning.
 
-`page >= 1` only. There is no `page <= document.page_count` check, even though
-`DocumentMetadata.page_count` exists and the loader populates it. Note that
-`tests/integration/test_ingestion.py:40` *does* assert `1 <= rule.citation.page <=
-document.page_count` — so the **pipeline** is bounded but the **policy** is not. Any other path
-that constructs a rule (a seed script, an importer, a second extractor) bypasses the bound
-entirely. The fixture in 3.1 is the existing proof.
+`ReviewService.approve` looks up `page_count` when the rule has a `document_id`. Demo seed
+(`make seed`) cites pages 7, 9, 10 of the 31-page Sirsa PDF and goes through that chokepoint.
 
-Suggested strengthening, for the domain owner to weigh — this is a **new, narrower** check, not
-a weakening of anything: extend `has_valid_citation` to take an optional page bound, and add a
-`source_text` verification step that confirms the quoted snippet actually occurs on the cited
-page. The trigger engine should refuse to emit on a rule whose citation fails re-verification,
-independent of `review_status`.
+Still open: `source_text` verification that the quoted snippet actually occurs on the cited
+page. That needs the document bytes, which the domain layer has no I/O to reach.
 
 ### 3.3 The fixture's pytest fixtures are dead
 

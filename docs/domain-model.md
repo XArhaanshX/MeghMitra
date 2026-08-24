@@ -53,12 +53,14 @@ unit-testable without a database (`tests/unit/test_citations.py`,
 routing) and `apps/api` (approval-time enforcement).
 
 1. **No citation → no approved rule.**
-   `has_valid_citation()` requires a non-blank `document` and a `page >= 1`. `can_approve()`
-   checks it and is the *only* gate `ReviewService.approve()` enforces -- independent of
-   confidence, review history, or who's asking. Enforced a second time at the database layer via
-   a `CHECK` constraint on `extracted_rules` (`db/migrations/0001_init.sql`): a row cannot be
-   written with `review_status = 'approved'` and a blank citation, even by a bug that bypasses
-   the Python layer entirely.
+   `has_valid_citation()` requires a non-blank `document` and a `page >= 1`. When the caller
+   knows the source document's length, `page_count` is an optional tightening: a page past the
+   end of the file is rejected. `can_approve()` checks this and is the *only* gate
+   `ReviewService.approve()` enforces -- independent of confidence, review history, or who's
+   asking. `ReviewService` looks up `document.page_count` when the rule has a `document_id`.
+   Enforced a second time at the database layer via a `CHECK` constraint on `extracted_rules`
+   (`db/migrations/0001_init.sql`): a row cannot be written with `review_status = 'approved'`
+   and a blank citation, even by a bug that bypasses the Python layer entirely.
 
 2. **Low confidence → no automated advisory eligibility.**
    `requires_review()` routes any draft below `MIN_AUTO_ELIGIBLE_CONFIDENCE` (0.85) to

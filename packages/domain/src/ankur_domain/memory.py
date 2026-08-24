@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from ankur_schemas.advisory import Advisory, TriggerEvent
 from ankur_schemas.document import DocumentMetadata, DocumentPage
 from ankur_schemas.enums import DocumentStatus
 from ankur_schemas.extraction import ExtractionRun
@@ -79,3 +80,33 @@ class InMemoryExtractionRunRepository:
 
     async def list_for_document(self, document_id: UUID) -> list[ExtractionRun]:
         return [r for r in self._runs.values() if r.document_id == document_id]
+
+
+class InMemoryTriggerEventRepository:
+    def __init__(self) -> None:
+        self._events: dict[UUID, TriggerEvent] = {}
+
+    async def add(self, event: TriggerEvent) -> TriggerEvent:
+        self._events[event.id] = event
+        return event
+
+    async def get(self, event_id: UUID) -> TriggerEvent | None:
+        return self._events.get(event_id)
+
+    async def list(self) -> list[TriggerEvent]:
+        return sorted(self._events.values(), key=lambda e: e.detected_at, reverse=True)
+
+
+class InMemoryAdvisoryRepository:
+    def __init__(self) -> None:
+        self._advisories: dict[UUID, Advisory] = {}
+
+    async def add(self, advisory: Advisory) -> Advisory:
+        self._advisories[advisory.id] = advisory
+        return advisory
+
+    async def get(self, advisory_id: UUID) -> Advisory | None:
+        return self._advisories.get(advisory_id)
+
+    async def list(self) -> list[Advisory]:
+        return sorted(self._advisories.values(), key=lambda a: a.generated_at, reverse=True)

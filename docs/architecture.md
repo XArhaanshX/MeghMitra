@@ -18,10 +18,11 @@ flowchart TD
     API --> WEB["apps/app (Next.js dashboard)"]
     REVIEWER["Human reviewer"] -->|approve/reject| API
 
-    subgraph "Future (not built yet)"
-        IMD["IMD / weather data"] --> TRIGGER["Trigger engine"]
-        TRIGGER --> DB
-        DB --> ADVISORY["Farmer advisory / BAO seed demand"]
+    subgraph "Trigger (API-wired; weather ingest not built)"
+        STATE["MoistureState + DrySpellForecast"] --> EMIT["POST /advisories"]
+        EMIT --> ELIG["approved + cited rules only"]
+        ELIG --> CODE["condition_code join"]
+        CODE --> OUT["WAIT / SOW / RE_SOW or ABSTAIN"]
     end
 ```
 

@@ -9,6 +9,7 @@ repository implementation is injected (Postgres in `apps/api`, in-memory in
 from ankur_domain.policies import (
     MIN_AUTO_ELIGIBLE_CONFIDENCE,
     can_approve,
+    can_emit_advisory,
     has_valid_citation,
     initial_review_status,
     is_advisory_eligible,
@@ -26,6 +27,7 @@ from ankur_domain.services import (
 __all__ = [
     "MIN_AUTO_ELIGIBLE_CONFIDENCE",
     "can_approve",
+    "can_emit_advisory",
     "has_valid_citation",
     "initial_review_status",
     "is_advisory_eligible",
