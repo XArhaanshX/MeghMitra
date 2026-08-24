@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from ankur_domain.policies import citation_appears_on_page
 from ankur_domain.repositories import (
     AdvisoryRepository,
     DocumentRepository,
@@ -57,6 +58,12 @@ class AdvisoryEmissionService:
         document = await self.documents.get(next(iter(ids)))
         return None if document is None else document.page_count
 
+    async def _page_text(self, rule: DACPRule) -> str | None:
+        if self.documents is None or rule.document_id is None:
+            return None
+        page = await self.documents.get_page(rule.document_id, rule.citation.page)
+        return None if page is None else page.text
+
     async def evaluate(
         self,
         *,
@@ -83,6 +90,13 @@ class AdvisoryEmissionService:
             crop_already_sown=crop_already_sown,
             document_page_count=await self._page_count(candidates),
         )
+        if rule is not None:
+            ok, why = citation_appears_on_page(rule.citation, await self._page_text(rule))
+            if not ok:
+                action = AdvisoryAction.ABSTAIN
+                decision = None
+                rule = None
+                reasons = [why or "citation source_text does not appear on the cited page"]
 
         now = datetime.now(UTC)
         event = TriggerEvent(

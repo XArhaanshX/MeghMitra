@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from ankur_schemas.citation import Citation
-from ankur_schemas.document import DocumentMetadata
+from ankur_schemas.document import DocumentMetadata, DocumentPage
 from ankur_schemas.enums import ReviewStatus
 from ankur_schemas.rule import DACPRule
 
@@ -25,6 +25,10 @@ class RuleNotFoundError(LookupError):
 
 
 class DocumentNotFoundError(LookupError):
+    pass
+
+
+class PageNotFoundError(LookupError):
     pass
 
 
@@ -47,6 +51,20 @@ class DocumentService:
 
     async def list(self) -> list[DocumentMetadata]:
         return await self.documents.list()
+
+    async def add_pages(self, pages: list[DocumentPage]) -> None:
+        await self.documents.add_pages(pages)
+
+    async def list_pages(self, document_id: UUID) -> list[DocumentPage]:
+        await self.get(document_id)
+        return await self.documents.get_pages(document_id)
+
+    async def get_page(self, document_id: UUID, page: int) -> DocumentPage:
+        found = await self.documents.get_page(document_id, page)
+        if found is None:
+            await self.get(document_id)
+            raise PageNotFoundError(f"{document_id}:{page}")
+        return found
 
 
 @dataclass(slots=True)
@@ -128,12 +146,22 @@ class ReviewService:
             return None
         return document.page_count
 
+    async def _page_text_for(self, rule: DACPRule) -> str | None:
+        if self.documents is None or rule.document_id is None:
+            return None
+        page = await self.documents.get_page(rule.document_id, rule.citation.page)
+        return None if page is None else page.text
+
     async def review_queue(self) -> list[DACPRule]:
         return await self.rules.list(review_status=ReviewStatus.NEEDS_REVIEW.value)
 
     async def approve(self, rule_id: UUID, *, reviewed_by: str) -> DACPRule:
         rule = await self._get(rule_id)
-        ok, reason = can_approve(rule, page_count=await self._page_count_for(rule))
+        ok, reason = can_approve(
+            rule,
+            page_count=await self._page_count_for(rule),
+            page_text=await self._page_text_for(rule),
+        )
         if not ok:
             raise RuleNotApprovableError(reason or "rule is not approvable")
         updated = rule.model_copy(

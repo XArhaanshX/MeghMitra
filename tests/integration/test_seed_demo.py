@@ -20,6 +20,7 @@ async def test_seed_approves_three_in_range_sirsa_rules():
     assert result.skipped == 0
     assert len(result.approved) == 3
     assert result.document.page_count == 31
+    assert len(await documents.get_pages(result.document.id)) == 31
     assert all(rule.review_status == ReviewStatus.APPROVED for rule in result.approved)
     assert all(rule.citation.page <= 31 for rule in result.approved)
     assert all(rule.document_id == result.document.id for rule in result.approved)

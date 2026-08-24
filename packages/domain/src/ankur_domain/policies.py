@@ -13,10 +13,31 @@ endpoint) call these instead of re-implementing the rule.
 
 from __future__ import annotations
 
+import re
+
 from ankur_schemas.citation import Citation
 from ankur_schemas.condition import EMITTABLE_CONDITION_CODES, ConditionCode
 from ankur_schemas.enums import ReviewStatus
 from ankur_schemas.rule import DACPRule, DACPRuleDraft
+
+_TOKEN = re.compile(r"[a-z0-9]+")
+_STOPWORDS = frozenset(
+    {
+        "with",
+        "from",
+        "that",
+        "this",
+        "after",
+        "into",
+        "when",
+        "then",
+        "than",
+        "and",
+        "the",
+        "for",
+        "etc",
+    }
+)
 
 MIN_AUTO_ELIGIBLE_CONFIDENCE = 0.85
 """Below this, a draft is routed to needs_review regardless of how complete
@@ -54,6 +75,38 @@ def has_valid_citation(citation: Citation | None, *, page_count: int | None = No
     if citation.page < 1:
         return False
     return not (page_count is not None and citation.page > page_count)
+
+
+def citation_appears_on_page(
+    citation: Citation | None, page_text: str | None
+) -> tuple[bool, str | None]:
+    """Tightening: when both snippet and page text exist, the snippet must be on the page.
+
+    Missing `source_text` or missing page text is *not* a failure -- we cannot
+    verify, so we do not invent a rejection. DACP tables wrap cells across
+    lines and this PDF's font encoding injects `H` as a space, so matching is
+    ordered significant-tokens (length >= 4), not a raw substring.
+    """
+    if citation is None or not (citation.source_text or "").strip():
+        return True, None
+    if page_text is None:
+        return True, None
+    needle = _significant_tokens(citation.source_text)
+    if not needle:
+        return True, None
+    hay = _significant_tokens(page_text)
+    matched = 0
+    for token in hay:
+        if token == needle[matched]:
+            matched += 1
+            if matched == len(needle):
+                return True, None
+    return False, "citation source_text does not appear on the cited page"
+
+
+def _significant_tokens(text: str) -> list[str]:
+    cleaned = text.replace("H", " ").casefold()
+    return [tok for tok in _TOKEN.findall(cleaned) if len(tok) >= 4 and tok not in _STOPWORDS]
 
 
 def requires_review(draft: DACPRuleDraft) -> tuple[bool, list[str]]:
@@ -94,16 +147,17 @@ def initial_review_status(draft: DACPRuleDraft) -> tuple[ReviewStatus, list[str]
     return status, reasons
 
 
-def can_approve(rule: DACPRule, *, page_count: int | None = None) -> tuple[bool, str | None]:
+def can_approve(
+    rule: DACPRule, *, page_count: int | None = None, page_text: str | None = None
+) -> tuple[bool, str | None]:
     """Whether a rule is eligible to move to APPROVED.
 
     Enforces: no citation -> never approvable, period -- independent of who
     is asking or what confidence says. This is the one check that must never
     be bypassed.
 
-    `page_count` is an optional tightening forwarded to `has_valid_citation`.
-    When the source document is known, a page past the end of the file is
-    rejected. Omitting it preserves the original behaviour.
+    `page_count` and `page_text` are optional tightenings. Omitting them
+    preserves the original behaviour. Confidence is still not a gate.
     """
     if not has_valid_citation(rule.citation, page_count=page_count):
         if page_count is not None and rule.citation is not None and rule.citation.page > page_count:
@@ -113,6 +167,9 @@ def can_approve(rule: DACPRule, *, page_count: int | None = None) -> tuple[bool,
                 f"exceeds document page_count {page_count}",
             )
         return False, "cannot approve a rule without a valid citation"
+    ok, reason = citation_appears_on_page(rule.citation, page_text)
+    if not ok:
+        return False, f"cannot approve: {reason}"
     return True, None
 
 
@@ -131,6 +188,7 @@ def can_emit_advisory(
     detected: ConditionCode | None,
     *,
     page_count: int | None = None,
+    page_text: str | None = None,
 ) -> tuple[bool, list[str]]:
     """Whether the trigger engine may emit an advisory. The default answer is no.
 
@@ -153,15 +211,12 @@ def can_emit_advisory(
     4. The matched rule's condition code equals the detected one. Guards against
        a caller passing a rule fetched on some other axis (district, crop) and
        assuming the condition matched too.
+    5. If `page_text` is supplied and the rule has `source_text`, that snippet
+       must appear on the page (`citation_appears_on_page`).
 
-    `page_count` is forwarded to `has_valid_citation` so a caller that knows the
-    source document can reject an out-of-range page at emit time as well as at
-    approve time.
-
-    Note this function cannot verify that `source_text` actually appears on the
-    cited page -- that needs the document, which the domain layer has no I/O to
-    reach. That check belongs in the serving layer, and it is listed as an open
-    item in `docs/ml-pipeline.md`.
+    `page_count` is forwarded to `has_valid_citation`. `page_text` is forwarded
+    to `citation_appears_on_page`. Both are optional tightenings; the serving
+    layer loads the page and passes the text in.
     """
     reasons: list[str] = []
 
@@ -177,6 +232,9 @@ def can_emit_advisory(
             reasons.append(f"rule review_status is {rule.review_status.value!r}, not 'approved'")
         if not has_valid_citation(rule.citation, page_count=page_count):
             reasons.append("matched rule has no valid citation")
+        ok, reason = citation_appears_on_page(rule.citation, page_text)
+        if not ok and reason is not None:
+            reasons.append(reason)
         if detected is not None and rule.fields.condition_code != detected:
             reasons.append(
                 f"rule condition_code {rule.fields.condition_code!r} "

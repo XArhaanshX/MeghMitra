@@ -14,8 +14,8 @@ import pytest
 from ankur_domain.memory import InMemoryDocumentRepository, InMemoryRuleRepository
 from ankur_domain.services import DocumentService, ReviewService, RuleService
 from ankur_schemas.citation import Citation
-from ankur_schemas.document import DocumentMetadata
-from ankur_schemas.enums import DocumentStatus, ReviewStatus
+from ankur_schemas.document import DocumentMetadata, DocumentPage
+from ankur_schemas.enums import DocumentStatus, ExtractionMethod, ReviewStatus
 from ankur_schemas.rule import DACPRule, DACPRuleFields
 from app.deps import get_document_service, get_review_service, get_rule_service
 from app.main import app
@@ -163,3 +163,43 @@ def test_approve_page_past_document_end_is_422(
     assert resp.status_code == 422
     assert "page" in resp.json()["detail"]
     assert asyncio.run(rule_repo.get(out_of_range.id)).review_status == ReviewStatus.PENDING
+
+
+def test_list_and_get_document_pages(
+    client: TestClient, doc_repo: InMemoryDocumentRepository
+):
+    document = DocumentMetadata(
+        filename="HAR16-Sirsa-30-06-2011.pdf",
+        district="Sirsa",
+        state="Haryana",
+        page_count=1,
+        registered_at=datetime.now(UTC),
+        status=DocumentStatus.REGISTERED,
+    )
+    asyncio.run(doc_repo.add(document))
+    asyncio.run(
+        doc_repo.add_pages(
+            [
+                DocumentPage(
+                    document_id=document.id,
+                    page=1,
+                    text="Early season drought (delayed onset)",
+                    extraction_method=ExtractionMethod.NATIVE_TEXT,
+                )
+            ]
+        )
+    )
+
+    listed = client.get(f"/documents/{document.id}/pages")
+    assert listed.status_code == 200
+    assert len(listed.json()) == 1
+    assert listed.json()[0]["page"] == 1
+
+    one = client.get(f"/documents/{document.id}/pages/1")
+    assert one.status_code == 200
+    assert "delayed onset" in one.json()["text"]
+
+    missing = client.get(f"/documents/{document.id}/pages/99")
+    assert missing.status_code == 404
+    unknown = client.get("/documents/00000000-0000-0000-0000-000000000000/pages")
+    assert unknown.status_code == 404

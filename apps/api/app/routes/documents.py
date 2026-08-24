@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
-from ankur_domain.services import DocumentNotFoundError, DocumentService
-from ankur_schemas.document import DocumentMetadata
+from ankur_domain.services import DocumentNotFoundError, DocumentService, PageNotFoundError
+from ankur_schemas.document import DocumentMetadata, DocumentPage
 from ankur_schemas.rule import DACPRule
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -43,6 +43,28 @@ async def get_document(
         return await service.get(document_id)
     except DocumentNotFoundError as exc:
         raise HTTPException(status_code=404, detail="document not found") from exc
+
+
+@router.get("/documents/{document_id}/pages")
+async def list_document_pages(
+    document_id: UUID, service: DocumentService = Depends(get_document_service)
+) -> list[DocumentPage]:
+    try:
+        return await service.list_pages(document_id)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="document not found") from exc
+
+
+@router.get("/documents/{document_id}/pages/{page}")
+async def get_document_page(
+    document_id: UUID, page: int, service: DocumentService = Depends(get_document_service)
+) -> DocumentPage:
+    try:
+        return await service.get_page(document_id, page)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="document not found") from exc
+    except PageNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="page not found") from exc
 
 
 @router.post("/documents/ingest", status_code=201)

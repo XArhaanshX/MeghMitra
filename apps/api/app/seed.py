@@ -26,6 +26,7 @@ from ankur_schemas.citation import Citation
 from ankur_schemas.document import DocumentMetadata
 from ankur_schemas.enums import DocumentStatus, ReviewStatus
 from ankur_schemas.rule import DACPRule, DACPRuleDraft, DACPRuleFields
+from document_intelligence.loader import load_document
 from document_intelligence.validator import validate_draft
 
 logger = logging.getLogger("ankur.seed")
@@ -75,10 +76,12 @@ async def seed_sirsa_demo(
     existing = [rule for rule in await rules.list() if DEMO_MARKER in rule.notes]
     if existing:
         document = await _existing_document(documents)
+        await _ensure_pages(documents, document)
         return SeedResult(document=document, approved=existing, skipped=len(existing))
 
     fixture = _load_fixture()
     document = await _ensure_document(documents, fixture["document"])
+    await _ensure_pages(documents, document)
     approved: list[DACPRule] = []
     now = datetime.now(UTC)
 
@@ -123,6 +126,18 @@ async def _ensure_document(documents: DocumentService, meta: dict) -> DocumentMe
             registered_at=datetime.now(UTC),
         )
     )
+
+
+async def _ensure_pages(documents: DocumentService, document: DocumentMetadata) -> None:
+    """Attach real PDF page text so citation re-check and GET /pages work."""
+    if await documents.list_pages(document.id):
+        return
+    pdf_path = _repo_root() / PDF_RELATIVE
+    if not pdf_path.exists():
+        return
+    _, pages = load_document(pdf_path, district=document.district, state=document.state)
+    remapped = [page.model_copy(update={"document_id": document.id}) for page in pages]
+    await documents.add_pages(remapped)
 
 
 def _pdf_sha256() -> str | None:

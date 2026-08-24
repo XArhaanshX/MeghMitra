@@ -18,7 +18,9 @@ columns existed.
   "no citation -> no approved rule" invariant at the database layer, independent of the Python
   application code.
 - `rule_citations` -- denormalized `(rule_id, document, page, source_text)` for indexed
-  "which rules cite page N of document X" lookups without querying JSONB.
+  "which rules cite page N of document X" lookups without querying JSONB. Written on
+  every `PostgresRuleRepository.add`. `extracted_rules.citation` remains the API source
+  of truth.
 - `extraction_runs` -- one row per `run_ingestion()` call: pages processed, rules extracted,
   rules needing review.
 - `review_queue` -- reserved worklist table (assignment, priority) layered on top of

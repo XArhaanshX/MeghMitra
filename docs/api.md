@@ -10,7 +10,9 @@ an `ankur_domain` service (`apps/api/app/deps.py` wires `Request` -> repository 
 | GET | `/health` | -- | No DB dependency; always 200 once the process is up. |
 | GET | `/documents` | `DocumentService.list` | |
 | GET | `/documents/{id}` | `DocumentService.get` | 404 via `DocumentNotFoundError`. |
-| POST | `/documents/ingest` | `IngestionService.ingest_pdf` | Body: `{path, district, state}`. `path` is a server-local filesystem path (no file upload in this bootstrap). Runs the full `document_intelligence` pipeline synchronously and persists document + rules + run. |
+| GET | `/documents/{id}/pages` | `DocumentService.list_pages` | Page text for the citation viewer. 404 if the document is missing. |
+| GET | `/documents/{id}/pages/{n}` | `DocumentService.get_page` | One 1-indexed page. 404 if the page was never stored. |
+| POST | `/documents/ingest` | `IngestionService.ingest_pdf` | Body: `{path, district, state}`. `path` is a server-local filesystem path (no file upload in this bootstrap). Runs the full `document_intelligence` pipeline synchronously and persists document + **pages** + rules + run. |
 | GET | `/rules` | `RuleService.list` / `list_advisory_eligible` | Optional `?review_status=`, `?district=`, `?advisory_eligible=true` (approved + cited only). |
 | GET | `/rules/{id}` | `RuleService.get` | 404 via `RuleNotFoundError`. |
 | GET | `/rules/{id}/citation` | `RuleService.citation_for` | Answers "why did Ankur produce this recommendation?". |
@@ -57,7 +59,11 @@ Interactive docs: `http://localhost:8000/docs`.
 4. `GET /rules/{id}/citation` — “why did Ankur say this?”
 
 `POST /rules/{id}/approve` returns **422** if the citation page is past the source
-document's `page_count` (the Sirsa PDF has 31 pages).
+document's `page_count` (the Sirsa PDF has 31 pages), or if `source_text` is set
+and does not appear on the stored page.
+
+CORS origins come from `CORS_ORIGINS` (comma-separated) in `.env`. Default is
+`http://localhost:3000,http://127.0.0.1:3000`.
 
 ### Example `POST /advisories` body
 

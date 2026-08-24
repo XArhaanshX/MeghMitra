@@ -44,6 +44,9 @@ class InMemoryDocumentRepository:
     async def get_pages(self, document_id: UUID) -> list[DocumentPage]:
         return list(self._pages.get(document_id, []))
 
+    async def get_page(self, document_id: UUID, page: int) -> DocumentPage | None:
+        return next((p for p in self._pages.get(document_id, []) if p.page == page), None)
+
 
 class InMemoryRuleRepository:
     def __init__(self) -> None:

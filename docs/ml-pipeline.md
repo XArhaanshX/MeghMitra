@@ -140,11 +140,13 @@ past the end of the source file when the caller knows `document.page_count`. Omi
 (including `data/fixtures/sirsa_dacp.json` pages 37–44, which have no `document_id`) do not
 change meaning.
 
-`ReviewService.approve` looks up `page_count` when the rule has a `document_id`. Demo seed
-(`make seed`) cites pages 7, 9, 10 of the 31-page Sirsa PDF and goes through that chokepoint.
+`ReviewService.approve` looks up `page_count` when the rule has a `document_id`.
+When the cited page's text is stored, it also requires `source_text` to appear on
+that page (`citation_appears_on_page`). Missing snippet or missing page text is
+not a failure. Demo seed (`make seed`) now persists the 31 PDF pages as well.
 
-Still open: `source_text` verification that the quoted snippet actually occurs on the cited
-page. That needs the document bytes, which the domain layer has no I/O to reach.
+Still open: multi-line table reassembly in extraction, and extractor-assigned
+`condition_code`.
 
 ### 3.3 The fixture's pytest fixtures are dead
 

@@ -10,11 +10,11 @@ from datetime import UTC, datetime
 
 import pytest
 from ankur_domain.memory import InMemoryDocumentRepository, InMemoryRuleRepository
-from ankur_domain.policies import can_approve, has_valid_citation
+from ankur_domain.policies import can_approve, citation_appears_on_page, has_valid_citation
 from ankur_domain.services import ReviewService, RuleNotApprovableError, RuleService
 from ankur_schemas.citation import Citation
-from ankur_schemas.document import DocumentMetadata
-from ankur_schemas.enums import DocumentStatus, ReviewStatus
+from ankur_schemas.document import DocumentMetadata, DocumentPage
+from ankur_schemas.enums import DocumentStatus, ExtractionMethod, ReviewStatus
 from ankur_schemas.rule import DACPRule, DACPRuleFields
 
 
@@ -73,6 +73,42 @@ def test_can_approve_rejects_page_past_end():
     assert can_approve(rule)[0] is True  # unbound call sites unchanged
 
 
+def test_citation_appears_on_page_is_tightening_only():
+    citation = Citation(
+        document="plan.pdf",
+        page=9,
+        source_text="Normal onset followed by 15-20 days dry spell after sowing",
+    )
+    page = "Normal onset followed by 15-20 days dry spell after sowing leading to poor germination."
+    assert citation_appears_on_page(citation, page)[0] is True
+    assert citation_appears_on_page(citation, None)[0] is True
+    assert citation_appears_on_page(Citation(document="plan.pdf", page=1), page)[0] is True
+    ok, reason = citation_appears_on_page(citation, "unrelated cotton flowering notes")
+    assert ok is False
+    assert "source_text" in (reason or "")
+
+
+def test_citation_appears_on_page_survives_wrapped_h_encoded_text():
+    """Sirsa pdftotext inserts H as a space and wraps table cells across lines."""
+    citation = Citation(
+        document="plan.pdf",
+        page=7,
+        source_text="Early season drought (delayed onset) Delay by 4 weeks (Aug 1 st week)",
+    )
+    page = "Early season \ndrought \n(delayed onset) \nDelayHbyH4 \nweeks \n(Aug 1 st week)"
+    assert citation_appears_on_page(citation, page)[0] is True
+
+
+def test_can_approve_rejects_snippet_not_on_page():
+    rule = _rule(
+        Citation(document="plan.pdf", page=9, source_text="pearl millet re-sow after dry spell")
+    )
+    ok, reason = can_approve(rule, page_text="this page discusses land use statistics")
+    assert ok is False
+    assert "source_text" in (reason or "")
+    assert can_approve(rule)[0] is True
+
+
 @pytest.mark.asyncio
 async def test_review_service_refuses_to_approve_uncited_rule():
     """End-to-end: the approve workflow itself blocks on a missing citation,
@@ -116,6 +152,44 @@ async def test_review_service_refuses_page_past_document_end():
 
     stored = await rules.get(rule.id)
     assert stored.review_status == ReviewStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_review_service_refuses_snippet_not_on_loaded_page():
+    rules = InMemoryRuleRepository()
+    documents = InMemoryDocumentRepository()
+    document = DocumentMetadata(
+        filename="plan.pdf",
+        district="Sirsa",
+        state="Haryana",
+        page_count=1,
+        registered_at=datetime.now(UTC),
+        status=DocumentStatus.REGISTERED,
+    )
+    await documents.add(document)
+    await documents.add_pages(
+        [
+            DocumentPage(
+                document_id=document.id,
+                page=1,
+                text="land use and irrigation statistics only",
+                extraction_method=ExtractionMethod.NATIVE_TEXT,
+            )
+        ]
+    )
+    rule = _rule(
+        Citation(
+            document=document.filename,
+            page=1,
+            source_text="Normal onset followed by 15-20 days dry spell after sowing",
+        ),
+        document_id=document.id,
+    )
+    await rules.add(rule)
+    service = ReviewService(rules=rules, documents=documents)
+
+    with pytest.raises(RuleNotApprovableError, match="source_text"):
+        await service.approve(rule.id, reviewed_by="tester")
 
 
 @pytest.mark.asyncio

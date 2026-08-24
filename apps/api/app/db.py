@@ -86,14 +86,33 @@ class PostgresDocumentRepository:
             rows = await conn.fetch(
                 "SELECT * FROM document_pages WHERE document_id = $1 ORDER BY page", document_id
             )
-        return [DocumentPage(**dict(row)) for row in rows]
+        return [_page_from_row(row) for row in rows]
+
+    async def get_page(self, document_id: UUID, page: int) -> DocumentPage | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM document_pages WHERE document_id = $1 AND page = $2",
+                document_id,
+                page,
+            )
+        return None if row is None else _page_from_row(row)
+
+
+def _page_from_row(row: asyncpg.Record) -> DocumentPage:
+    return DocumentPage(**dict(row))
+
+
+def _json_value(value: object) -> object:
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
 
 
 def _rule_from_row(row: asyncpg.Record) -> DACPRule:
     data = dict(row)
-    data["fields"] = json.loads(data["fields"])
-    data["citation"] = json.loads(data["citation"])
-    data["notes"] = json.loads(data["notes"])
+    data["fields"] = _json_value(data["fields"])
+    data["citation"] = _json_value(data["citation"])
+    data["notes"] = _json_value(data["notes"])
     return DACPRule(**data)
 
 
@@ -102,7 +121,7 @@ class PostgresRuleRepository:
         self._pool = pool
 
     async def add(self, rule: DACPRule) -> DACPRule:
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn, conn.transaction():
             await conn.execute(
                 """
                 INSERT INTO extracted_rules
@@ -121,6 +140,20 @@ class PostgresRuleRepository:
                 rule.reviewed_by,
                 rule.reviewed_at,
                 json.dumps(rule.notes),
+            )
+            await conn.execute(
+                """
+                INSERT INTO rule_citations (rule_id, document, page, source_text)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (rule_id) DO UPDATE
+                    SET document = EXCLUDED.document,
+                        page = EXCLUDED.page,
+                        source_text = EXCLUDED.source_text
+                """,
+                rule.id,
+                rule.citation.document,
+                rule.citation.page,
+                rule.citation.source_text,
             )
         return rule
 

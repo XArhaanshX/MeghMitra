@@ -397,6 +397,26 @@ def test_citation_beyond_the_document_is_rejected_when_page_count_is_known() -> 
     assert any("citation" in r for r in reasons)
 
 
+def test_snippet_not_on_page_blocks_emit_when_page_text_is_known() -> None:
+    rule = _rule().model_copy(
+        update={
+            "citation": Citation(
+                document="HAR16-Sirsa-30-06-2011.pdf",
+                page=9,
+                source_text="Normal onset followed by 15-20 day dry spell after sowing",
+            )
+        }
+    )
+    may_emit, reasons = can_emit_advisory(
+        rule,
+        ConditionCode.DRY_SPELL_AFTER_SOWING,
+        page_text="this page is a land-use table",
+    )
+    assert may_emit is False
+    assert any("source_text" in r for r in reasons)
+    assert can_emit_advisory(rule, ConditionCode.DRY_SPELL_AFTER_SOWING)[0] is True
+
+
 # ---------------------------------------------------------------------------
 # Decision layer
 # ---------------------------------------------------------------------------
