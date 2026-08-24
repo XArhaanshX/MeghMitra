@@ -10,6 +10,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import asyncpg
 from fastapi import FastAPI
 
 from app.config import get_settings
@@ -26,6 +27,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         app.state.pool = await create_pool(settings.database_url)
         logger.info("connected to database")
+    except (OSError, asyncpg.PostgresError, TimeoutError) as exc:
+        # Expected in local dev when Postgres isn't up yet (make docker-up
+        # not run, or still starting) -- one clear line, no traceback noise.
+        app.state.pool = None
+        logger.warning("database unavailable at startup (%s); DB-backed routes will 503", exc)
     except Exception:  # noqa: BLE001 - startup must not crash the process without DB
         app.state.pool = None
         logger.warning("database unavailable at startup; DB-backed routes will 503", exc_info=True)
