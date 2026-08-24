@@ -1,0 +1,118 @@
+{
+  "_comment": "Hand-curated fixture: document metadata + a few representative DACPRule-shaped records for tests. Not the raw pipeline output (see data/processed/sirsa/ for that) -- these are gold-shape examples covering the invariants the test suite checks: a fully-cited approvable rule, a rule with legitimately null fields, a low-confidence rule pending review, and a rejected rule.",
+  "document": {
+    "filename": "HAR16-Sirsa-30-06-2011.pdf",
+    "district": "Sirsa",
+    "state": "Haryana"
+  },
+  "rules": [
+    {
+      "fields": {
+        "district": "Sirsa",
+        "block": null,
+        "farming_situation": null,
+        "crop": "Pearl millet",
+        "soil": null,
+        "crop_stage": "After sowing",
+        "condition": "Normal onset followed by 15-20 day dry spell after sowing",
+        "action": "Re-sow",
+        "variety": "HHB-67 Improved",
+        "seed_rate": null,
+        "actor": "Block Agriculture Officer"
+      },
+      "citation": {
+        "document": "HAR16-Sirsa-30-06-2011.pdf",
+        "page": 37,
+        "source_text": "Delay by 15-20 days after normal onset: Re-sow Pearl millet HHB-67 (Improved)"
+      },
+      "confidence": 0.94,
+      "extractor_version": "document-intelligence/0.1.0",
+      "review_status": "approved",
+      "reviewed_by": "fixture-seed",
+      "notes": [],
+      "extracted_at": "2011-06-30T00:00:00Z"
+    },
+    {
+      "fields": {
+        "district": "Sirsa",
+        "block": null,
+        "farming_situation": "Rainfed, light textured soils",
+        "crop": "Cotton",
+        "soil": null,
+        "crop_stage": "Before sowing",
+        "condition": "Delayed onset of monsoon by more than 3 weeks",
+        "action": "Shift to short duration variety",
+        "variety": null,
+        "seed_rate": null,
+        "actor": "Block Agriculture Officer"
+      },
+      "citation": {
+        "document": "HAR16-Sirsa-30-06-2011.pdf",
+        "page": 38,
+        "source_text": "Delay by > 3 weeks: shift to short duration cotton variety"
+      },
+      "confidence": 0.88,
+      "extractor_version": "document-intelligence/0.1.0",
+      "review_status": "pending",
+      "notes": [],
+      "extracted_at": "2011-06-30T00:00:00Z"
+    },
+    {
+      "fields": {
+        "district": "Sirsa",
+        "block": null,
+        "farming_situation": null,
+        "crop": null,
+        "soil": null,
+        "crop_stage": null,
+        "condition": "Sirsa Wheat Late sowing due to delayed paddy harvest -",
+        "action": null,
+        "variety": null,
+        "seed_rate": null,
+        "actor": null
+      },
+      "citation": {
+        "document": "HAR16-Sirsa-30-06-2011.pdf",
+        "page": 41,
+        "source_text": "Sirsa | Wheat | Late sowing due to delayed paddy harvest | -"
+      },
+      "confidence": 0.41,
+      "extractor_version": "document-intelligence/0.1.0",
+      "review_status": "needs_review",
+      "notes": [
+        "no table header context available; fields may be mis-mapped",
+        "no preceding header row recognized on this page",
+        "confidence 0.41 below auto-eligible threshold 0.85"
+      ],
+      "extracted_at": "2011-06-30T00:00:00Z"
+    },
+    {
+      "fields": {
+        "district": "Sirsa",
+        "block": null,
+        "farming_situation": null,
+        "crop": "Mustard",
+        "soil": null,
+        "crop_stage": "Flowering",
+        "condition": "Unseasonal rain during flowering",
+        "action": "Apply protective fungicide spray",
+        "variety": null,
+        "seed_rate": null,
+        "actor": "Block Agriculture Officer"
+      },
+      "citation": {
+        "document": "HAR16-Sirsa-30-06-2011.pdf",
+        "page": 44,
+        "source_text": "Unseasonal rain at flowering: apply protective fungicide spray"
+      },
+      "confidence": 0.79,
+      "extractor_version": "document-intelligence/0.1.0",
+      "review_status": "rejected",
+      "reviewed_by": "fixture-seed",
+      "notes": [
+        "rejected: source text on page 44 does not match this row on re-check"
+      ],
+      "extracted_at": "2011-06-30T00:00:00Z"
+    }
+  ]
+}

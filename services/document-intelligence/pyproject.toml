@@ -1,0 +1,27 @@
+[project]
+name = "document-intelligence"
+version = "0.1.0"
+description = "DACP PDF ingestion: page-aware extraction, structured rule drafting, confidence scoring."
+requires-python = ">=3.12"
+dependencies = [
+    "ankur-schemas",
+    "ankur-domain",
+    "pypdf>=5.1",
+]
+
+[project.optional-dependencies]
+ocr = [
+    "pytesseract>=0.3.13",
+    "pdf2image>=1.17",
+]
+
+[tool.uv.sources]
+ankur-schemas = { workspace = true }
+ankur-domain = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/document_intelligence"]
