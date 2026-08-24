@@ -1,4 +1,4 @@
-.PHONY: help dev web test lint format migrate ingest docker-up docker-down docker-reset logs ps psql sync
+.PHONY: help dev web test lint format migrate ingest trigger-demo docker-up docker-down docker-reset logs ps psql sync
 .DEFAULT_GOAL := help
 
 DISTRICT ?= Sirsa
@@ -52,6 +52,12 @@ migrate: ## Apply db/migrations/*.sql against a running container (idempotent)
 ingest: ## Run document ingestion: make ingest PDF=path.pdf [DISTRICT=Sirsa] [STATE=Haryana]
 	@if [ -z "$(PDF)" ]; then echo "usage: make ingest PDF=path/to/document.pdf [DISTRICT=Sirsa] [STATE=Haryana]"; exit 1; fi
 	uv run python -m document_intelligence.ingest $(PDF) --district "$(DISTRICT)" --state "$(STATE)"
+
+# Runs on SYNTHETIC weather -- verifies the pipeline is wired and fast, not that
+# the forecast has skill. Real verification needs IMD gridded rainfall and ECMWF
+# reforecasts; see docs/ml-pipeline.md.
+trigger-demo: ## Leave-one-season-out verification of the dry-spell model ladder (synthetic weather)
+	uv run python -m trigger_engine
 
 docker-up: ## Start Postgres/PostGIS via docker-compose and wait until it's healthy (migrations auto-apply on first boot)
 	docker compose up -d --wait

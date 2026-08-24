@@ -3,6 +3,7 @@ members = [
     "packages/schemas",
     "packages/domain",
     "services/document-intelligence",
+    "services/trigger-engine",
     "apps/api",
 ]
 

@@ -31,9 +31,16 @@ flowchart TD
 apps/api            <- thin FastAPI routes; imports ankur_domain + document_intelligence
 apps/app             <- Next.js dashboard; talks to apps/api over HTTP only
 services/document-intelligence  <- pure extraction pipeline; imports ankur_domain + ankur_schemas
+services/trigger-engine         <- weather -> moisture -> condition; imports ankur_domain + ankur_schemas
 packages/domain      <- ankur_domain: policies (pure functions), repository Protocols, services
 packages/schemas     <- ankur_schemas: Pydantic models; zero business logic, zero I/O
 ```
+
+`document_intelligence` and `trigger_engine` are siblings and never import each other. That is
+the structural expression of the product rule: the extractor never sees weather, and the
+trigger engine never creates a rule. They meet only through the database, and only via
+`ankur_domain.policies.is_advisory_eligible` -- the trigger engine reads approved rules and
+nothing else.
 
 Dependency direction is one-way: `apps/api` and `document_intelligence` depend on `ankur_domain`,
 which depends on `ankur_schemas`. `ankur_schemas` depends on nothing internal. Nothing in

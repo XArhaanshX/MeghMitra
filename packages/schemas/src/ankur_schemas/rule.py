@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field
 
 from ankur_schemas.citation import Citation
+from ankur_schemas.condition import ConditionCode
 from ankur_schemas.enums import ReviewStatus
 
 
@@ -39,6 +40,16 @@ class DACPRuleFields(BaseModel):
     crop_stage: str | None = Field(default=None, description="e.g. 'After sowing', 'Flowering'.")
     condition: str = Field(
         ..., description="The weather aberration / dry-spell condition that triggers this action."
+    )
+    condition_code: ConditionCode | None = Field(
+        default=None,
+        description=(
+            "Normalized form of `condition`, and the only field the trigger engine joins on. "
+            "`condition` stays verbatim because it is what the citation quotes; this is the "
+            "machine-checkable projection of it. None means normalization has not run. "
+            "UNMAPPED means it ran and failed -- the two are different and must stay different: "
+            "'not yet attempted' is a backlog item, 'attempted and unmappable' is a coverage fact."
+        ),
     )
     action: str | None = Field(default=None, description="The pre-approved contingency action.")
     variety: str | None = None
