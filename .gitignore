@@ -224,3 +224,7 @@ node_modules/
 .vercel/
 *.tsbuildinfo
 .pnpm-store/
+
+# Generated ingestion output (reproducible via `make ingest`) -- do not commit.
+data/processed/*
+!data/processed/.gitkeep

@@ -72,10 +72,20 @@ Frontend (`apps/app/`): `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm lint` -- 
 ## Project-local Claude Code skills & subagents
 
 `.claude/skills/` and `.claude/agents/` hold Ankur-specific guidance for coding agents working in
-this repo (extraction pipeline conventions, domain-invariant review checklist). They're
-versioned with the repo so any agent session opened here picks them up automatically -- read
-`.claude/skills/*/SKILL.md` before touching `services/document-intelligence/` or
-`packages/domain/policies.py`.
+this repo. They're versioned with the repo so any agent session opened here picks them up
+automatically. Read the relevant `SKILL.md` before starting work in that area, and prefer
+dispatching the matching subagent for scoped, single-area tasks:
+
+| Area | Skill | Subagent |
+|---|---|---|
+| `services/document-intelligence/` | `dacp-extraction` | `dacp-extraction-engineer` |
+| Approval/citation/review-status logic (`ankur_domain.policies`, review routes) | `dacp-domain-invariants` | `domain-invariant-reviewer` (read-only) |
+| `apps/api/` | `fastapi-backend` | `backend-api-developer` |
+| `apps/app/` | `nextjs-frontend` (+ `apps/app/AGENTS.md`) | `frontend-developer` |
+| `docker-compose.yml`, `db/migrations/`, `Makefile`, deploy/env config | `hackathon-deployment` | `deployment-engineer` |
+
+`domain-invariant-reviewer` is read-only by design -- dispatch it to check a change against the
+two core invariants before merging, not to implement one.
 
 ## Testing philosophy
 

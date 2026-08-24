@@ -37,7 +37,17 @@ trigger engine needs spatial joins.
 
 New file, `NNNN_description.sql`, next sequence number. Never edit a migration that has already
 shipped (i.e. that could already be applied to someone's local Postgres volume) -- write a new
-one. Local dev has no automatic migration runner beyond the Postgres container's own
-`docker-entrypoint-initdb.d` (which only runs on a *fresh* volume); `make migrate` re-applies all
-`db/migrations/*.sql` files against a running container in order, so it is only safe against a
-fresh database today (the migrations are not yet idempotent).
+one. End the new file with a footer that registers it in `schema_migrations`, mirroring
+`0001_init.sql`'s:
+
+```sql
+INSERT INTO schema_migrations (filename) VALUES ('NNNN_description.sql')
+ON CONFLICT (filename) DO NOTHING;
+```
+
+`make migrate` reads `db/migrations/*.sql` in order and, for each file, skips it if its filename
+is already present in `schema_migrations` -- otherwise it applies the file (with
+`-v ON_ERROR_STOP=1`, so a real SQL error fails the target loudly) and the file's own footer
+records it. This makes `make migrate` safe to run repeatedly, including right after
+`make docker-up` (whose `docker-entrypoint-initdb.d` already auto-applied `0001_init.sql` on a
+fresh volume -- `make migrate` correctly sees it as already applied and skips it).

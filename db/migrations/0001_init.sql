@@ -174,3 +174,19 @@ CREATE TABLE audit_logs (
     entity_id   UUID,
     details     JSONB
 );
+
+-- ---------------------------------------------------------------------------
+-- Migration tracking
+-- ---------------------------------------------------------------------------
+-- Every migration file ends with a footer like this one, registering itself
+-- so `make migrate` can skip migrations already applied (including this
+-- file, which docker-compose's docker-entrypoint-initdb.d runs automatically
+-- on first container boot, before `make migrate` ever runs).
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    filename    TEXT PRIMARY KEY,
+    applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+INSERT INTO schema_migrations (filename) VALUES ('0001_init.sql')
+ON CONFLICT (filename) DO NOTHING;

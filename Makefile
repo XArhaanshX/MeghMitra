@@ -20,12 +20,24 @@ format:
 	uv run ruff format .
 
 # Applies db/migrations/*.sql, in order, against the running docker-compose
-# postgres container. Safe to re-run only on a fresh database -- migrations
-# are not yet idempotent (bootstrap has a single 0001_init.sql).
+# postgres container. Idempotent: each migration file registers itself in
+# schema_migrations (see the footer of 0001_init.sql), so already-applied
+# migrations (including 0001_init.sql, auto-run by docker-entrypoint-initdb.d
+# on first container boot) are skipped instead of re-erroring on "already
+# exists". -v ON_ERROR_STOP=1 makes a genuine SQL error fail the target.
+PSQL := docker compose exec -T db psql -v ON_ERROR_STOP=1 -U $${POSTGRES_USER:-ankur} -d $${POSTGRES_DB:-ankur}
+
 migrate:
+	@$(PSQL) -c "CREATE TABLE IF NOT EXISTS schema_migrations (filename TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now());" > /dev/null
 	@for f in db/migrations/*.sql; do \
-		echo "applying $$f"; \
-		docker compose exec -T db psql -U $${POSTGRES_USER:-ankur} -d $${POSTGRES_DB:-ankur} < $$f; \
+		name=$$(basename $$f); \
+		applied=$$($(PSQL) -tAc "SELECT 1 FROM schema_migrations WHERE filename = '$$name'"); \
+		if [ "$$applied" = "1" ]; then \
+			echo "skip $$f (already applied)"; \
+		else \
+			echo "applying $$f"; \
+			$(PSQL) < $$f; \
+		fi; \
 	done
 
 # make ingest PDF=data/raw/HAR16-Sirsa-30-06-2011.pdf
