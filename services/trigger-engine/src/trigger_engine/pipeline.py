@@ -32,7 +32,13 @@ from ankur_schemas.rule import DACPRule
 
 from trigger_engine.conditions import detect_condition
 from trigger_engine.config import COL_BLOCK, COL_DATE, COL_RAIN
-from trigger_engine.decision import AdvisoryAction, Decision, DecisionInput, decide
+from trigger_engine.decision import (
+    PROBABILITY_DRIVEN_CONDITIONS,
+    AdvisoryAction,
+    Decision,
+    DecisionInput,
+    decide,
+)
 from trigger_engine.evaluation import (
     VerificationResult,
     block_bootstrap_ci,
@@ -66,6 +72,14 @@ class CrossValidationResult:
     verification: VerificationResult
     bss_confidence_interval: tuple[float, float]
     fit_seconds: float
+    scored_positions: np.ndarray
+    """Positional indices into the panel that `out_of_fold` and `labels` describe.
+
+    Carried so a probability can be put back beside the row it was made for. The
+    serving path needs that: an advisory is issued for one block on one day, and
+    the only probability it may use is the out-of-fold one, made by a model that
+    never saw that row's season. Without this mapping the safe probabilities and
+    the rows they belong to are two arrays nobody can join."""
 
     def summary_line(self) -> str:
         low, high = self.bss_confidence_interval
@@ -205,6 +219,7 @@ def run_cross_validation(
                     y, p, grp, statistic="bss", reference=ref, n_resamples=300
                 ),
                 fit_seconds=timings[model.name],
+                scored_positions=np.flatnonzero(scored),
             )
         )
     return results
@@ -276,6 +291,22 @@ def emit_advisory(
     may_emit, reasons = can_emit_advisory(matched, detected, page_count=document_page_count)
     if not may_emit:
         return AdvisoryAction.ABSTAIN, None, None, reasons
+
+    # Step 3b: the decision layer only speaks about dry spells. A condition it
+    # does not model must not borrow its thresholds -- see
+    # `decision.PROBABILITY_DRIVEN_CONDITIONS` for the flood row that made this
+    # necessary. Passing `can_emit_advisory` means the plan has something to say
+    # here; it does not mean `decide` knows how to say it.
+    if detected not in PROBABILITY_DRIVEN_CONDITIONS:
+        return (
+            AdvisoryAction.ABSTAIN,
+            None,
+            None,
+            [
+                f"condition {detected.value!r} has an approved cited rule, but no "
+                f"probabilistic decision rule covers it yet"
+            ],
+        )
 
     decision = decide(
         DecisionInput(

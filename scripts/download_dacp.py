@@ -97,7 +97,8 @@ def download_one(entry: dict[str, str], dest_root: Path) -> tuple[str, str]:
     ok = try_fetch(url)
     if not ok:
         parsed = urlparse(url)
-        lowered = parsed._replace(path=parsed.path.rsplit("/", 1)[0].lower() + "/" + parsed.path.rsplit("/", 1)[1])
+        directory, _, filename = parsed.path.rpartition("/")
+        lowered = parsed._replace(path=f"{directory.lower()}/{filename}")
         if lowered.geturl() != url:
             ok = try_fetch(lowered.geturl())
     if ok:

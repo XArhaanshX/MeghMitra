@@ -47,7 +47,9 @@ def run_ingestion(
 
     document, pages = load_document(pdf_path, district=district, state=state, ocr_engine=ocr_engine)
     chunks = chunk_pages(pages)
-    drafts = extract_rules(chunks, document)
+    # `pages` enables the geometric table path; `chunks` remain the fallback for
+    # pages whose columns cannot be located. See `extractor` module docstring.
+    drafts = extract_rules(chunks, document, pages=pages)
     rules = validate_drafts(drafts)
 
     run = ExtractionRun(

@@ -20,6 +20,7 @@ import time
 import traceback
 from pathlib import Path
 
+from document_intelligence.naming import district_from_filename
 from document_intelligence.pipeline import run_ingestion
 
 _SPECIAL_CASE = {
@@ -35,7 +36,10 @@ def iter_targets(raw_root: Path) -> list[tuple[Path, str, str]]:
             state, district = _SPECIAL_CASE[pdf_path.name]
         elif len(rel.parts) >= 2:
             state = rel.parts[0].replace("_", " ")
-            district = pdf_path.stem
+            # The stem is `<state-code><serial>-<district>-<date>`; recording it
+            # verbatim gave the corpus districts named "NL2-Wokha-20.11.2014",
+            # which nothing downstream can look up. See `naming.py`.
+            district = district_from_filename(pdf_path.stem, state=state)
         else:
             continue
         targets.append((pdf_path, state, district))
