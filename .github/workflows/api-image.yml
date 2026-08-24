@@ -7,6 +7,7 @@ on:
       - apps/api/**
       - packages/**
       - services/document-intelligence/**
+      - services/trigger-engine/**
       - db/migrations/**
       - data/raw/**
       - pyproject.toml
@@ -51,41 +52,3 @@ jobs:
             ${{ env.IMAGE }}:sha-${{ steps.vars.outputs.short_sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  deploy:
-    needs: build-push
-    runs-on: ubuntu-latest
-    steps:
-      # Push-based GitOps: this repo triggers the redeploy by committing the
-      # new image tag to upayanmazumder/vps, rather than relying on ArgoCD
-      # Image Updater (verified broken cluster-wide for cross-registry
-      # tags/list lookups as of 2026-08-24 -- see the deploy changelog entry
-      # for evidence). Requires a fine-grained PAT with contents:write on
-      # upayanmazumder/vps, stored as the VPS_DEPLOY_TOKEN repo secret.
-      - uses: actions/checkout@v4
-        with:
-          repository: upayanmazumder/vps
-          token: ${{ secrets.VPS_DEPLOY_TOKEN }}
-          path: vps
-
-      - name: install kustomize
-        run: |
-          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
-          sudo mv kustomize /usr/local/bin/
-
-      - name: pin new image tag
-        working-directory: vps/k8s/apps/de/meghmitra
-        run: kustomize edit set image "${{ env.IMAGE }}=${{ env.IMAGE }}:sha-${{ needs.build-push.outputs.short_sha }}"
-
-      - name: commit and push
-        working-directory: vps
-        run: |
-          git config user.name "meghmitra-ci"
-          git config user.email "ci@meghmitra.upayan.dev"
-          git add k8s/apps/de/meghmitra/kustomization.yaml
-          if git diff --cached --quiet; then
-            echo "no image change, nothing to deploy"
-            exit 0
-          fi
-          git commit -m "deploy: meghmitra api sha-${{ needs.build-push.outputs.short_sha }}"
-          git push origin main

@@ -13,6 +13,7 @@ COPY pyproject.toml uv.lock ./
 COPY packages/schemas packages/schemas
 COPY packages/domain packages/domain
 COPY services/document-intelligence services/document-intelligence
+COPY services/trigger-engine services/trigger-engine
 COPY apps/api apps/api
 
 # --no-dev: prod image doesn't need pytest/ruff. --frozen: fail instead of
