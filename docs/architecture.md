@@ -1,5 +1,7 @@
 # Architecture
 
+Full-system diagram (built pipeline, serving layer, invariants, and the deferred weather/advisory path): [`architecture.excalidraw`](./architecture.excalidraw). Open it in [Excalidraw](https://excalidraw.com) or the VS Code / Cursor Excalidraw extension.
+
 ## Data flow (built)
 
 ```mermaid
