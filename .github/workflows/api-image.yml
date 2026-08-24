@@ -50,5 +50,3 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:edge
             ${{ env.IMAGE }}:sha-${{ steps.vars.outputs.short_sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
