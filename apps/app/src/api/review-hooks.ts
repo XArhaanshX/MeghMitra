@@ -19,8 +19,8 @@ export function useReviewQueue() {
 function useInvalidateRuleCaches() {
   const queryClient = useQueryClient();
   return () => {
-    void queryClient.invalidateQueries({ queryKey: reviewKeys.all });
-    void queryClient.invalidateQueries({ queryKey: ruleKeys.all });
+    void queryClient.invalidateQueries({ queryKey: reviewKeys.all() });
+    void queryClient.invalidateQueries({ queryKey: ruleKeys.all() });
   };
 }
 

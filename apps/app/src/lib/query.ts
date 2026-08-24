@@ -31,7 +31,7 @@ export function createQueryKeys<K extends string>(entity: K) {
   return {
     all: () => [entity] as const,
     lists: () => [entity, 'list'] as const,
-    list: <F extends Record<string, unknown>>(filters?: F) => [entity, 'list', filters] as const,
+    list: <F extends object>(filters?: F) => [entity, 'list', filters] as const,
     detail: (id: string | number) => [entity, id] as const,
   };
 }
