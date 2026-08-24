@@ -1,0 +1,19 @@
+# Build context for apps/api/Dockerfile (repo root). apps/app has its own
+# .dockerignore since it builds from its own directory as context.
+.git
+.github
+.claude
+.vscode
+.ruff_cache
+.pytest_cache
+**/__pycache__
+**/*.pyc
+.venv
+apps/app
+data/processed
+data/fixtures
+docs
+tests
+*.md
+!README.md
+SIH-2026-Ankur-Idea-Submission.pdf
