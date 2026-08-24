@@ -41,16 +41,52 @@ describe('toApiError', () => {
     expect(toApiError(e)).toBe(e);
   });
 
-  it('converts AxiosError with response data', () => {
+  it('converts a 404 HTTPException string detail', () => {
     const axiosErr = new AxiosError('Request failed', 'ERR_BAD_RESPONSE');
     Object.defineProperty(axiosErr, 'response', {
-      value: { status: 404, data: { message: 'Not found', code: 'NOT_FOUND' } },
+      value: { status: 404, data: { detail: 'rule not found' } },
     });
     const result = toApiError(axiosErr);
     expect(result).toBeInstanceOf(ApiError);
     expect(result.status).toBe(404);
-    expect(result.message).toBe('Not found');
-    expect(result.code).toBe('NOT_FOUND');
+    expect(result.message).toBe('rule not found');
+  });
+
+  it('converts a 422 domain-error string detail', () => {
+    const axiosErr = new AxiosError('Request failed', 'ERR_BAD_RESPONSE');
+    Object.defineProperty(axiosErr, 'response', {
+      value: { status: 422, data: { detail: 'cannot approve a rule without a valid citation' } },
+    });
+    const result = toApiError(axiosErr);
+    expect(result.status).toBe(422);
+    expect(result.message).toBe('cannot approve a rule without a valid citation');
+  });
+
+  it('joins a 422 request-validation array detail into one message', () => {
+    const axiosErr = new AxiosError('Request failed', 'ERR_BAD_RESPONSE');
+    Object.defineProperty(axiosErr, 'response', {
+      value: {
+        status: 422,
+        data: {
+          detail: [
+            { loc: ['body', 'reviewed_by'], msg: 'Field required', type: 'missing' },
+            { loc: ['body', 'reason'], msg: 'Input should be a valid string', type: 'string_type' },
+          ],
+        },
+      },
+    });
+    const result = toApiError(axiosErr);
+    expect(result.message).toBe('Field required; Input should be a valid string');
+  });
+
+  it('reports a fixed message for 503 regardless of body', () => {
+    const axiosErr = new AxiosError('Request failed', 'ERR_BAD_RESPONSE');
+    Object.defineProperty(axiosErr, 'response', {
+      value: { status: 503, data: {} },
+    });
+    const result = toApiError(axiosErr);
+    expect(result.status).toBe(503);
+    expect(result.message).toBe('Database unavailable');
   });
 
   it('converts AxiosError without response', () => {

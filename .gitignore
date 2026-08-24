@@ -224,6 +224,7 @@ node_modules/
 .vercel/
 *.tsbuildinfo
 .pnpm-store/
+.env*.local
 
 # Generated ingestion output (reproducible via `make ingest`) -- do not commit.
 data/processed/*
