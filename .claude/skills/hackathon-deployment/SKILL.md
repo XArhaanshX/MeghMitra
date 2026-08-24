@@ -25,11 +25,15 @@ background job system to deploy.
 ```bash
 cp .env.example .env                 # backend: DATABASE_URL, POSTGRES_*, API_HOST/PORT
 cp apps/app/example.env apps/app/.env.local   # frontend: NEXT_PUBLIC_API_URL
-make docker-up && make migrate       # Postgres up, schema applied (idempotent, safe to re-run)
-make dev                             # FastAPI on :8000
+make dev                             # brings up Postgres (waits for healthy), applies migrations, runs FastAPI on :8000
 # separate terminal:
-cd apps/app && pnpm install && pnpm dev   # Next.js on :3000
+make web                             # or: cd apps/app && pnpm install && pnpm dev -- Next.js on :3000
 ```
+
+`make dev` depends on `docker-up` (`docker compose up -d --wait`, so it blocks until Postgres's
+healthcheck passes -- no race between "Postgres is starting" and "API tries to connect") and
+`migrate` (idempotent). Useful during a demo: `make logs SERVICE=db`, `make psql`, `make ps`,
+`make docker-reset` (wipe and restart Postgres from scratch).
 
 Verify before a demo: `curl localhost:8000/health` returns `{"status":"ok"}`, then run
 `make ingest PDF=data/raw/HAR16-Sirsa-30-06-2011.pdf` (or `POST /documents/ingest`) and confirm

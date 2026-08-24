@@ -1,9 +1,10 @@
-.PHONY: help dev test lint format migrate ingest docker-up docker-down sync
+.PHONY: help dev web test lint format migrate ingest docker-up docker-down docker-reset logs ps psql sync
 .DEFAULT_GOAL := help
 
 DISTRICT ?= Sirsa
 STATE ?= Haryana
 PDF ?=
+SERVICE ?=
 
 help: ## Show this list of targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*##"}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -11,8 +12,11 @@ help: ## Show this list of targets
 sync: ## Install/refresh the Python workspace (one venv, all packages)
 	uv sync
 
-dev: ## Run the FastAPI app with --reload on :8000
+dev: docker-up migrate ## Start Postgres (if needed), apply pending migrations, then run FastAPI with --reload on :8000
 	uv run uvicorn app.main:app --reload --app-dir apps/api --host 0.0.0.0 --port 8000
+
+web: ## Run the Next.js dashboard dev server on :3000 (run `make dev` in another terminal first)
+	cd apps/app && pnpm dev
 
 test: ## Run the pytest suite (unit/ + integration/, no live Postgres required)
 	uv run pytest
@@ -49,8 +53,21 @@ ingest: ## Run document ingestion: make ingest PDF=path.pdf [DISTRICT=Sirsa] [ST
 	@if [ -z "$(PDF)" ]; then echo "usage: make ingest PDF=path/to/document.pdf [DISTRICT=Sirsa] [STATE=Haryana]"; exit 1; fi
 	uv run python -m document_intelligence.ingest $(PDF) --district "$(DISTRICT)" --state "$(STATE)"
 
-docker-up: ## Start Postgres/PostGIS via docker-compose (migrations auto-apply on first boot)
-	docker compose up -d
+docker-up: ## Start Postgres/PostGIS via docker-compose and wait until it's healthy (migrations auto-apply on first boot)
+	docker compose up -d --wait
 
 docker-down: ## Stop and remove the docker-compose containers (add -v manually to drop the volume)
 	docker compose down
+
+docker-reset: ## Stop containers, drop the volume, and start fresh (schema re-applies from scratch)
+	docker compose down -v
+	$(MAKE) docker-up
+
+logs: ## Follow docker-compose logs (all services; pass SERVICE=db to scope)
+	docker compose logs -f $(SERVICE)
+
+ps: ## Show docker-compose container status
+	docker compose ps
+
+psql: ## Open an interactive psql shell into the running Postgres container
+	docker compose exec db psql -U $${POSTGRES_USER:-ankur} -d $${POSTGRES_DB:-ankur}

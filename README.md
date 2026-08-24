@@ -150,20 +150,26 @@ uv sync            # installs the whole Python workspace into one .venv
 ### Running PostgreSQL
 
 ```bash
-make docker-up      # starts Postgres/PostGIS; db/migrations/*.sql auto-applied on first boot
-make migrate         # re-apply migrations against an already-running container
+make docker-up       # starts Postgres/PostGIS, waits until healthy; db/migrations/*.sql auto-applied on first boot
+make migrate          # (re-)apply db/migrations/*.sql -- idempotent, safe to run any time
+make psql              # open an interactive psql shell
+make logs SERVICE=db    # follow container logs (omit SERVICE for all)
 make docker-down     # stop and remove the container (add -v manually to also drop the volume)
+make docker-reset     # drop the volume and start fresh
 ```
 
 ### Running the API
 
 ```bash
-make dev             # uvicorn --reload on :8000
+make dev             # starts/waits-for Postgres, applies pending migrations, then uvicorn --reload on :8000
 curl localhost:8000/health
 ```
 
-If `DATABASE_URL` is unreachable at startup, the API still boots; DB-backed routes return `503`
-until Postgres is available (health checks and process supervision stay simple).
+`make dev` depends on `make docker-up` (which blocks until Postgres's healthcheck passes) and
+`make migrate`, so a single `make dev` from a cold start reliably connects on the first try --
+no manual wait needed between starting Postgres and starting the API. If you run the API another
+way (`uvicorn` directly, or `DATABASE_URL` pointing somewhere unreachable), it still boots; DB-backed
+routes return `503` until Postgres is reachable (health checks and process supervision stay simple).
 
 ### Running document ingestion
 
@@ -205,7 +211,7 @@ Integration tests spin up the FastAPI app with in-memory repositories via
 ```bash
 cd apps/app
 pnpm install
-pnpm dev
+pnpm dev            # or, from repo root: make web
 ```
 
 ## Next recommended implementation
