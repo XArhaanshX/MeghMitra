@@ -229,3 +229,7 @@ node_modules/
 # Generated ingestion output (reproducible via `make ingest`) -- do not commit.
 data/processed/*
 !data/processed/.gitkeep
+
+# DACP source PDFs (hundreds of MB, reproducible via `uv run python scripts/download_dacp.py`)
+# -- do not commit, including the previously-tracked sample.
+data/raw/*

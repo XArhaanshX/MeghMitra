@@ -38,6 +38,12 @@ ingest: ## Run document ingestion: make ingest PDF=path.pdf [DISTRICT=Sirsa] [ST
 	@if [ -z "$(PDF)" ]; then echo "usage: make ingest PDF=path/to/document.pdf [DISTRICT=Sirsa] [STATE=Haryana]"; exit 1; fi
 	uv run python -m document_intelligence.ingest $(PDF) --district "$(DISTRICT)" --state "$(STATE)"
 
+download-dacp: ## Download every ICAR-CRIDA DACP PDF into data/raw/ (idempotent, not git-tracked)
+	uv run python scripts/download_dacp.py
+
+ingest-all-dacp: ## Ingest every PDF under data/raw/ into data/processed/ (in-process, fast)
+	uv run python scripts/ingest_all_dacp.py
+
 seed: docker-up migrate ## Load 3 cited Sirsa demo rules (validate_draft, then ReviewService.approve)
 	uv run python -m app.seed
 
