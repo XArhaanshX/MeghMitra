@@ -1,0 +1,52 @@
+name: api-image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/api/**
+      - packages/**
+      - services/document-intelligence/**
+      - services/trigger-engine/**
+      - db/migrations/**
+      - data/raw/**
+      - pyproject.toml
+      - uv.lock
+      - .dockerignore
+      - .github/workflows/api-image.yml
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/xarhaanshx/meghmitra/api
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    outputs:
+      short_sha: ${{ steps.vars.outputs.short_sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: vars
+        run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:edge
+            ${{ env.IMAGE }}:sha-${{ steps.vars.outputs.short_sha }}

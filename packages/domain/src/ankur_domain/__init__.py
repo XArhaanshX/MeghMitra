@@ -9,6 +9,8 @@ repository implementation is injected (Postgres in `apps/api`, in-memory in
 from ankur_domain.policies import (
     MIN_AUTO_ELIGIBLE_CONFIDENCE,
     can_approve,
+    can_emit_advisory,
+    citation_appears_on_page,
     has_valid_citation,
     initial_review_status,
     is_advisory_eligible,
@@ -17,6 +19,7 @@ from ankur_domain.policies import (
 from ankur_domain.services import (
     DocumentNotFoundError,
     DocumentService,
+    PageNotFoundError,
     ReviewService,
     RuleNotApprovableError,
     RuleNotFoundError,
@@ -26,6 +29,8 @@ from ankur_domain.services import (
 __all__ = [
     "MIN_AUTO_ELIGIBLE_CONFIDENCE",
     "can_approve",
+    "can_emit_advisory",
+    "citation_appears_on_page",
     "has_valid_citation",
     "initial_review_status",
     "is_advisory_eligible",
@@ -34,6 +39,7 @@ __all__ = [
     "RuleService",
     "ReviewService",
     "DocumentNotFoundError",
+    "PageNotFoundError",
     "RuleNotFoundError",
     "RuleNotApprovableError",
 ]

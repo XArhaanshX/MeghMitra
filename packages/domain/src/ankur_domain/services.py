@@ -12,11 +12,11 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from ankur_schemas.citation import Citation
-from ankur_schemas.document import DocumentMetadata
+from ankur_schemas.document import DocumentMetadata, DocumentPage
 from ankur_schemas.enums import ReviewStatus
 from ankur_schemas.rule import DACPRule
 
-from ankur_domain.policies import can_approve
+from ankur_domain.policies import can_approve, is_advisory_eligible
 from ankur_domain.repositories import DocumentRepository, RuleRepository
 
 
@@ -25,6 +25,10 @@ class RuleNotFoundError(LookupError):
 
 
 class DocumentNotFoundError(LookupError):
+    pass
+
+
+class PageNotFoundError(LookupError):
     pass
 
 
@@ -48,6 +52,20 @@ class DocumentService:
     async def list(self) -> list[DocumentMetadata]:
         return await self.documents.list()
 
+    async def add_pages(self, pages: list[DocumentPage]) -> None:
+        await self.documents.add_pages(pages)
+
+    async def list_pages(self, document_id: UUID) -> list[DocumentPage]:
+        await self.get(document_id)
+        return await self.documents.get_pages(document_id)
+
+    async def get_page(self, document_id: UUID, page: int) -> DocumentPage:
+        found = await self.documents.get_page(document_id, page)
+        if found is None:
+            await self.get(document_id)
+            raise PageNotFoundError(f"{document_id}:{page}")
+        return found
+
 
 @dataclass(slots=True)
 class RuleService:
@@ -63,8 +81,23 @@ class RuleService:
             raise RuleNotFoundError(str(rule_id))
         return rule
 
-    async def list(self, *, review_status: ReviewStatus | None = None) -> list[DACPRule]:
-        return await self.rules.list(review_status=review_status.value if review_status else None)
+    async def list(
+        self, *, review_status: ReviewStatus | None = None, district: str | None = None
+    ) -> list[DACPRule]:
+        rules = await self.rules.list(review_status=review_status.value if review_status else None)
+        if district is not None:
+            rules = [r for r in rules if r.fields.district == district]
+        return rules
+
+    async def list_advisory_eligible(self, *, district: str | None = None) -> list[DACPRule]:
+        """Rules the trigger engine is allowed to join on.
+
+        Approved *and* cited — `is_advisory_eligible`, not confidence. A pending
+        rule with high confidence must not appear here; an approved low-confidence
+        rule that a human verified against the source page must.
+        """
+        rules = await self.list(review_status=ReviewStatus.APPROVED, district=district)
+        return [r for r in rules if is_advisory_eligible(r)]
 
     async def citation_for(self, rule_id: UUID) -> Citation:
         rule = await self.get(rule_id)
@@ -74,6 +107,10 @@ class RuleService:
         """Persist freshly-extracted rules. Extraction never sets APPROVED --
         `validate_draft` guarantees every incoming rule is PENDING or
         NEEDS_REVIEW, so this is a plain insert, not a review decision."""
+        if any(rule.review_status == ReviewStatus.APPROVED for rule in rules):
+            raise ValueError(
+                "extraction cannot persist an approved rule; use ReviewService.approve"
+            )
         return [await self.rules.add(rule) for rule in rules]
 
 
@@ -87,6 +124,7 @@ class ReviewService:
     """
 
     rules: RuleRepository
+    documents: DocumentRepository | None = None
 
     async def _get(self, rule_id: UUID) -> DACPRule:
         rule = await self.rules.get(rule_id)
@@ -94,12 +132,36 @@ class ReviewService:
             raise RuleNotFoundError(str(rule_id))
         return rule
 
+    async def _page_count_for(self, rule: DACPRule) -> int | None:
+        """Look up the source document's page count when we have it.
+
+        Missing document, missing `document_id`, or no documents repo: return
+        None so `can_approve` keeps its original (page >= 1) behaviour rather
+        than inventing a bound.
+        """
+        if self.documents is None or rule.document_id is None:
+            return None
+        document = await self.documents.get(rule.document_id)
+        if document is None:
+            return None
+        return document.page_count
+
+    async def _page_text_for(self, rule: DACPRule) -> str | None:
+        if self.documents is None or rule.document_id is None:
+            return None
+        page = await self.documents.get_page(rule.document_id, rule.citation.page)
+        return None if page is None else page.text
+
     async def review_queue(self) -> list[DACPRule]:
         return await self.rules.list(review_status=ReviewStatus.NEEDS_REVIEW.value)
 
     async def approve(self, rule_id: UUID, *, reviewed_by: str) -> DACPRule:
         rule = await self._get(rule_id)
-        ok, reason = can_approve(rule)
+        ok, reason = can_approve(
+            rule,
+            page_count=await self._page_count_for(rule),
+            page_text=await self._page_text_for(rule),
+        )
         if not ok:
             raise RuleNotApprovableError(reason or "rule is not approvable")
         updated = rule.model_copy(

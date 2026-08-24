@@ -13,6 +13,7 @@ import json
 from uuid import UUID
 
 import asyncpg
+from ankur_schemas.advisory import Advisory, TriggerEvent
 from ankur_schemas.document import DocumentMetadata, DocumentPage
 from ankur_schemas.extraction import ExtractionRun
 from ankur_schemas.rule import DACPRule
@@ -85,14 +86,33 @@ class PostgresDocumentRepository:
             rows = await conn.fetch(
                 "SELECT * FROM document_pages WHERE document_id = $1 ORDER BY page", document_id
             )
-        return [DocumentPage(**dict(row)) for row in rows]
+        return [_page_from_row(row) for row in rows]
+
+    async def get_page(self, document_id: UUID, page: int) -> DocumentPage | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM document_pages WHERE document_id = $1 AND page = $2",
+                document_id,
+                page,
+            )
+        return None if row is None else _page_from_row(row)
+
+
+def _page_from_row(row: asyncpg.Record) -> DocumentPage:
+    return DocumentPage(**dict(row))
+
+
+def _json_value(value: object) -> object:
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
 
 
 def _rule_from_row(row: asyncpg.Record) -> DACPRule:
     data = dict(row)
-    data["fields"] = json.loads(data["fields"])
-    data["citation"] = json.loads(data["citation"])
-    data["notes"] = json.loads(data["notes"])
+    data["fields"] = _json_value(data["fields"])
+    data["citation"] = _json_value(data["citation"])
+    data["notes"] = _json_value(data["notes"])
     return DACPRule(**data)
 
 
@@ -101,7 +121,7 @@ class PostgresRuleRepository:
         self._pool = pool
 
     async def add(self, rule: DACPRule) -> DACPRule:
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn, conn.transaction():
             await conn.execute(
                 """
                 INSERT INTO extracted_rules
@@ -120,6 +140,20 @@ class PostgresRuleRepository:
                 rule.reviewed_by,
                 rule.reviewed_at,
                 json.dumps(rule.notes),
+            )
+            await conn.execute(
+                """
+                INSERT INTO rule_citations (rule_id, document, page, source_text)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (rule_id) DO UPDATE
+                    SET document = EXCLUDED.document,
+                        page = EXCLUDED.page,
+                        source_text = EXCLUDED.source_text
+                """,
+                rule.id,
+                rule.citation.document,
+                rule.citation.page,
+                rule.citation.source_text,
             )
         return rule
 
@@ -194,3 +228,122 @@ class PostgresExtractionRunRepository:
                 document_id,
             )
         return [ExtractionRun(**dict(row)) for row in rows]
+
+
+def _jsonb(value: object) -> str:
+    return json.dumps(value)
+
+
+class PostgresTriggerEventRepository:
+    def __init__(self, pool: asyncpg.Pool) -> None:
+        self._pool = pool
+
+    async def add(self, event: TriggerEvent) -> TriggerEvent:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO trigger_events
+                    (id, block_id, rule_id, detected_at, condition, payload, block_key, reasons)
+                VALUES ($1, NULL, $2, $3, $4, $5, $6, $7)
+                """,
+                event.id,
+                event.rule_id,
+                event.detected_at,
+                event.condition,
+                _jsonb(event.payload),
+                event.block_key,
+                _jsonb(event.reasons),
+            )
+        return event
+
+    async def get(self, event_id: UUID) -> TriggerEvent | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM trigger_events WHERE id = $1", event_id)
+        return None if row is None else _trigger_event_from_row(row)
+
+    async def list(self) -> list[TriggerEvent]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("SELECT * FROM trigger_events ORDER BY detected_at DESC")
+        return [_trigger_event_from_row(row) for row in rows]
+
+
+def _trigger_event_from_row(row: asyncpg.Record) -> TriggerEvent:
+    payload = row["payload"]
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    payload = dict(payload or {})
+    reasons = (
+        row["reasons"]
+        if "reasons" in row and row["reasons"] is not None
+        else payload.pop("reasons", [])
+    )
+    if isinstance(reasons, str):
+        reasons = json.loads(reasons)
+    block_key = (
+        row["block_key"]
+        if "block_key" in row and row["block_key"]
+        else payload.pop("block_key", "")
+    )
+    return TriggerEvent(
+        id=row["id"],
+        block_key=block_key or "",
+        rule_id=row["rule_id"],
+        detected_at=row["detected_at"],
+        condition=row["condition"],
+        reasons=list(reasons or []),
+        payload=payload,
+    )
+
+
+class PostgresAdvisoryRepository:
+    """Postgres-backed `AdvisoryRepository`. ABSTAIN never inserts here."""
+
+    def __init__(self, pool: asyncpg.Pool) -> None:
+        self._pool = pool
+
+    async def add(self, advisory: Advisory) -> Advisory:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO advisories
+                    (id, trigger_event_id, rule_id, generated_at, channel, delivered_to,
+                     action, reason)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                """,
+                advisory.id,
+                advisory.trigger_event_id,
+                advisory.rule_id,
+                advisory.generated_at,
+                advisory.channel,
+                advisory.delivered_to,
+                advisory.action,
+                advisory.reason,
+            )
+        return advisory
+
+    async def get(self, advisory_id: UUID) -> Advisory | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM advisories WHERE id = $1", advisory_id)
+        return None if row is None else _advisory_from_row(row)
+
+    async def list(self) -> list[Advisory]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch("SELECT * FROM advisories ORDER BY generated_at DESC")
+        return [_advisory_from_row(row) for row in rows]
+
+
+def _advisory_from_row(row: asyncpg.Record) -> Advisory:
+    action = row["action"] if "action" in row and row["action"] else row["channel"]
+    channel = (
+        row["channel"] if row["channel"] not in {"wait", "sow", "re_sow", "abstain"} else "api"
+    )
+    return Advisory(
+        id=row["id"],
+        trigger_event_id=row["trigger_event_id"],
+        rule_id=row["rule_id"],
+        generated_at=row["generated_at"],
+        action=action or "abstain",
+        reason=row["reason"] if "reason" in row else None,
+        channel=channel or "api",
+        delivered_to=row["delivered_to"],
+    )

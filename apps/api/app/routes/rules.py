@@ -16,9 +16,13 @@ router = APIRouter(tags=["rules"])
 @router.get("/rules")
 async def list_rules(
     review_status: ReviewStatus | None = Query(default=None),
+    district: str | None = Query(default=None),
+    advisory_eligible: bool = Query(default=False),
     service: RuleService = Depends(get_rule_service),
 ) -> list[DACPRule]:
-    return await service.list(review_status=review_status)
+    if advisory_eligible:
+        return await service.list_advisory_eligible(district=district)
+    return await service.list(review_status=review_status, district=district)
 
 
 @router.get("/rules/{rule_id}")

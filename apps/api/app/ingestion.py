@@ -31,6 +31,7 @@ class IngestionService:
     ) -> tuple[DocumentMetadata, list[DACPRule], ExtractionRun]:
         result = run_ingestion(pdf_path, district=district, state=state)
         document = await self.documents.register(result.document)
+        await self.documents.add_pages(result.pages)
         rules = await self.rules.record_extracted(result.rules)
         run = await self.runs.add(result.run)
         return document, rules, run

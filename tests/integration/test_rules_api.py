@@ -14,7 +14,8 @@ import pytest
 from ankur_domain.memory import InMemoryDocumentRepository, InMemoryRuleRepository
 from ankur_domain.services import DocumentService, ReviewService, RuleService
 from ankur_schemas.citation import Citation
-from ankur_schemas.enums import ReviewStatus
+from ankur_schemas.document import DocumentMetadata, DocumentPage
+from ankur_schemas.enums import DocumentStatus, ExtractionMethod, ReviewStatus
 from ankur_schemas.rule import DACPRule, DACPRuleFields
 from app.deps import get_document_service, get_review_service, get_rule_service
 from app.main import app
@@ -30,10 +31,16 @@ def rule_repo(sirsa_rules) -> InMemoryRuleRepository:
 
 
 @pytest.fixture
-def client(rule_repo: InMemoryRuleRepository):
-    doc_repo = InMemoryDocumentRepository()
+def doc_repo() -> InMemoryDocumentRepository:
+    return InMemoryDocumentRepository()
+
+
+@pytest.fixture
+def client(rule_repo: InMemoryRuleRepository, doc_repo: InMemoryDocumentRepository):
     app.dependency_overrides[get_rule_service] = lambda: RuleService(rules=rule_repo)
-    app.dependency_overrides[get_review_service] = lambda: ReviewService(rules=rule_repo)
+    app.dependency_overrides[get_review_service] = lambda: ReviewService(
+        rules=rule_repo, documents=doc_repo
+    )
     app.dependency_overrides[get_document_service] = lambda: DocumentService(documents=doc_repo)
     try:
         yield TestClient(app)
@@ -122,3 +129,77 @@ def test_approve_rule_without_citation_is_rejected_by_the_api(
 
     assert resp.status_code == 422
     assert asyncio.run(rule_repo.get(uncited.id)).review_status == ReviewStatus.PENDING
+
+
+def test_approve_page_past_document_end_is_422(
+    client: TestClient,
+    rule_repo: InMemoryRuleRepository,
+    doc_repo: InMemoryDocumentRepository,
+):
+    document = DocumentMetadata(
+        filename="HAR16-Sirsa-30-06-2011.pdf",
+        district="Sirsa",
+        state="Haryana",
+        page_count=31,
+        registered_at=datetime.now(UTC),
+        status=DocumentStatus.REGISTERED,
+    )
+    asyncio.run(doc_repo.add(document))
+    out_of_range = DACPRule(
+        document_id=document.id,
+        fields=DACPRuleFields(district="Sirsa", condition="some condition"),
+        citation=Citation(document=document.filename, page=37),
+        confidence=0.95,
+        extractor_version="document-intelligence/0.1.0",
+        extracted_at=datetime.now(UTC),
+        review_status=ReviewStatus.PENDING,
+    )
+    asyncio.run(rule_repo.add(out_of_range))
+
+    resp = client.post(
+        f"/rules/{out_of_range.id}/approve", json={"reviewed_by": "reviewer@icar-crida"}
+    )
+
+    assert resp.status_code == 422
+    assert "page" in resp.json()["detail"]
+    assert asyncio.run(rule_repo.get(out_of_range.id)).review_status == ReviewStatus.PENDING
+
+
+def test_list_and_get_document_pages(
+    client: TestClient, doc_repo: InMemoryDocumentRepository
+):
+    document = DocumentMetadata(
+        filename="HAR16-Sirsa-30-06-2011.pdf",
+        district="Sirsa",
+        state="Haryana",
+        page_count=1,
+        registered_at=datetime.now(UTC),
+        status=DocumentStatus.REGISTERED,
+    )
+    asyncio.run(doc_repo.add(document))
+    asyncio.run(
+        doc_repo.add_pages(
+            [
+                DocumentPage(
+                    document_id=document.id,
+                    page=1,
+                    text="Early season drought (delayed onset)",
+                    extraction_method=ExtractionMethod.NATIVE_TEXT,
+                )
+            ]
+        )
+    )
+
+    listed = client.get(f"/documents/{document.id}/pages")
+    assert listed.status_code == 200
+    assert len(listed.json()) == 1
+    assert listed.json()[0]["page"] == 1
+
+    one = client.get(f"/documents/{document.id}/pages/1")
+    assert one.status_code == 200
+    assert "delayed onset" in one.json()["text"]
+
+    missing = client.get(f"/documents/{document.id}/pages/99")
+    assert missing.status_code == 404
+    unknown = client.get("/documents/00000000-0000-0000-0000-000000000000/pages")
+    assert unknown.status_code == 404

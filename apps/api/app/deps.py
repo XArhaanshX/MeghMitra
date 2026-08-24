@@ -7,14 +7,23 @@ or `app.state` directly. Tests override these with in-memory services via
 
 from __future__ import annotations
 
-from ankur_domain.repositories import DocumentRepository, ExtractionRunRepository, RuleRepository
+from ankur_domain.repositories import (
+    AdvisoryRepository,
+    DocumentRepository,
+    ExtractionRunRepository,
+    RuleRepository,
+    TriggerEventRepository,
+)
 from ankur_domain.services import DocumentService, ReviewService, RuleService
 from fastapi import HTTPException, Request
 
+from app.advisory import AdvisoryEmissionService
 from app.db import (
+    PostgresAdvisoryRepository,
     PostgresDocumentRepository,
     PostgresExtractionRunRepository,
     PostgresRuleRepository,
+    PostgresTriggerEventRepository,
 )
 from app.ingestion import IngestionService
 
@@ -47,7 +56,7 @@ def get_rule_service(request: Request) -> RuleService:
 
 
 def get_review_service(request: Request) -> ReviewService:
-    return ReviewService(rules=get_rule_repo(request))
+    return ReviewService(rules=get_rule_repo(request), documents=get_document_repo(request))
 
 
 def get_ingestion_service(request: Request) -> IngestionService:
@@ -55,4 +64,21 @@ def get_ingestion_service(request: Request) -> IngestionService:
         documents=get_document_service(request),
         rules=get_rule_service(request),
         runs=get_run_repo(request),
+    )
+
+
+def get_trigger_event_repo(request: Request) -> TriggerEventRepository:
+    return PostgresTriggerEventRepository(_pool(request))
+
+
+def get_advisory_repo(request: Request) -> AdvisoryRepository:
+    return PostgresAdvisoryRepository(_pool(request))
+
+
+def get_advisory_service(request: Request) -> AdvisoryEmissionService:
+    return AdvisoryEmissionService(
+        rules=get_rule_service(request),
+        events=get_trigger_event_repo(request),
+        advisories=get_advisory_repo(request),
+        documents=get_document_repo(request),
     )
