@@ -75,12 +75,12 @@
   --ink: #17160f;
   --ink-muted: #3f3d2e;
   --ink-soft: #6b6852;
-  --teal: #2c6a72;
-  --teal-deep: #1d474d;
-  --teal-soft: #d8e5e6;
-  --moss: #3a5c26;
-  --moss-bright: #5a8a3c;
-  --moss-soft: #e2ead0;
+  --teal: #33587f;
+  --teal-deep: #1e3a54;
+  --teal-soft: #dce5f0;
+  --moss: #2874c9;
+  --moss-bright: #4e97e0;
+  --moss-soft: #dcebfb;
   --salmon: #e3a79c;
   --salmon-ink: #872a21;
 
@@ -126,12 +126,12 @@
   --ink: #f2ead2;
   --ink-muted: #d8d2b8;
   --ink-soft: #a8a290;
-  --teal: #4a9aa3;
-  --teal-deep: #bfe0e3;
-  --teal-soft: #223b3e;
-  --moss: #a9c98a;
-  --moss-bright: #7fb955;
-  --moss-soft: #2f3d22;
+  --teal: #5b8fc7;
+  --teal-deep: #bfd6ec;
+  --teal-soft: #1e3350;
+  --moss: #8fc1f0;
+  --moss-bright: #4fa0e8;
+  --moss-soft: #1b3a5c;
   --salmon: #c77c6c;
   --salmon-ink: #f6ddd6;
 
@@ -142,7 +142,7 @@
   --popover: var(--sand-50);
   --popover-foreground: var(--ink);
   --primary: var(--teal);
-  --primary-foreground: #0d2023;
+  --primary-foreground: #0d1b2a;
   --secondary: var(--teal-soft);
   --secondary-foreground: var(--teal-deep);
   --muted: #211f16;
