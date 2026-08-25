@@ -1,27 +1,29 @@
 'use client';
 
-import { Moon, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
-import { Button } from '@/components/ui/button';
 import { useMounted } from '@/hooks/use-mounted';
 
+// Styled as the plain-text "light mode" / "dark mode" label from the design
+// reference rather than an icon switch -- clicking the label toggles theme.
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
   const mounted = useMounted();
 
   if (!mounted) {
-    return <Button variant="ghost" size="icon-sm" aria-label="Toggle theme" disabled />;
+    return <span className="font-mono text-xs text-ink-soft">light mode</span>;
   }
 
+  const isDark = resolvedTheme === 'dark';
+
   return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
+    <button
+      type="button"
       aria-label="Toggle theme"
-      onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+      onClick={() => setTheme(isDark ? 'light' : 'dark')}
+      className="font-mono text-xs text-ink-soft transition-colors hover:text-ink"
     >
-      {resolvedTheme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
-    </Button>
+      {isDark ? 'dark mode' : 'light mode'}
+    </button>
   );
 }

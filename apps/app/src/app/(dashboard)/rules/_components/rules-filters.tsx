@@ -63,12 +63,12 @@ export function RulesFilters() {
           </SelectContent>
         </Select>
       </div>
-      <label className="flex items-center gap-2 pb-2 text-sm">
+      <label className="flex items-center gap-2 pb-2 font-mono text-sm text-ink">
         <input
           type="checkbox"
           checked={filters.advisory_eligible ?? false}
           onChange={event => void setFilters({ advisory_eligible: event.target.checked || null })}
-          className="size-4 rounded border-border"
+          className="size-4 rounded-sm border-2 border-ink accent-teal"
         />
         Advisory-eligible only
       </label>

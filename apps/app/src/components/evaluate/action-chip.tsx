@@ -14,10 +14,10 @@ const LABEL: Record<AdvisoryAction, string> = {
 
 // abstain is silence, a successful outcome -- muted, never red/error-coloured.
 const CLASS: Record<AdvisoryAction, string> = {
-  sow: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
-  wait: 'border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-400',
-  re_sow: 'border-primary/40 bg-primary/15 text-primary',
-  abstain: 'border-border bg-muted text-muted-foreground',
+  sow: 'border-ink bg-moss-soft text-moss',
+  wait: 'border-ink bg-teal-soft text-teal-deep',
+  re_sow: 'border-ink bg-teal text-sand-50',
+  abstain: 'border-ink bg-sand-100 text-ink-soft',
 };
 
 export function ActionChip({ action }: ActionChipProps) {
@@ -25,7 +25,7 @@ export function ActionChip({ action }: ActionChipProps) {
     <span
       role="status"
       className={cn(
-        'inline-flex items-center rounded-full border px-4 py-1.5 text-lg font-semibold tracking-wide',
+        'inline-flex items-center rounded-sm border-2 px-4 py-1.5 font-mono text-lg font-bold tracking-widest uppercase',
         CLASS[action]
       )}
     >

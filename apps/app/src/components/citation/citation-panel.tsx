@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { hasValidCitation } from '@/schemas';
 import type { Citation } from '@/schemas';
 
 interface CitationPanelProps {
@@ -13,34 +14,31 @@ interface CitationPanelProps {
 export function CitationPanel({
   citation,
   isLoading = false,
-  heading = 'Why Ankur said this',
+  heading = 'Source citation',
 }: CitationPanelProps) {
   return (
-    <Card className="border-primary/30 bg-primary/5">
+    <Card className="bg-sand-50 shadow-[4px_4px_0_0_var(--ink)]">
       <CardHeader>
-        <CardTitle className="text-lg">{heading}</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Traceable to the exact page of the source DACP document.
-        </p>
+        <CardTitle className="flex items-center gap-2 font-mono text-xs font-bold tracking-widest text-teal-deep uppercase">
+          <span className="size-2 shrink-0 rounded-full bg-teal" />
+          {heading}
+        </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {isLoading && <p className="text-sm text-muted-foreground">Loading citation…</p>}
-        {!isLoading && !citation && (
-          <p className="text-sm text-muted-foreground">No citation available.</p>
+      <CardContent className="space-y-2">
+        {isLoading && <p className="text-sm text-ink-muted">Loading citation…</p>}
+        {!isLoading && (!citation || !hasValidCitation(citation)) && (
+          <p className="text-sm text-ink-muted">No valid citation on file.</p>
         )}
-        {citation && (
+        {citation && hasValidCitation(citation) && (
           <>
-            <div className="flex flex-wrap items-baseline gap-2">
-              <span className="font-medium">{citation.document}</span>
-              <span className="text-3xl font-semibold tracking-tight text-primary">
-                p.{citation.page}
-              </span>
-            </div>
-            <blockquote className="border-l-2 border-primary/40 pl-3 text-sm text-muted-foreground italic">
-              {citation.source_text ? `"${citation.source_text}"` : 'No source snippet captured.'}
-            </blockquote>
-            {citation.bounding_region && (
-              <p className="text-xs text-muted-foreground">Region: {citation.bounding_region}</p>
+            <p className="font-mono text-lg font-bold text-ink">{citation.document}</p>
+            <p className="font-mono text-sm text-ink-soft">
+              {citation.bounding_region ? `${citation.bounding_region}, ` : ''}p. {citation.page}
+            </p>
+            {citation.source_text && (
+              <blockquote className="border-l-2 border-teal pl-3 text-sm text-ink-muted italic">
+                &ldquo;{citation.source_text}&rdquo;
+              </blockquote>
             )}
           </>
         )}

@@ -49,7 +49,7 @@ export function RejectDialog({ ruleId }: RejectDialogProps) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
-          <Button size="sm" variant="outline">
+          <Button size="sm" variant="destructive">
             Reject
           </Button>
         }

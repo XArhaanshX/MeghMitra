@@ -20,44 +20,48 @@ export function ReviewMeta({ rule }: ReviewMetaProps) {
   const canAct = ACTIONABLE_STATUS[rule.review_status];
 
   return (
-    <Card>
+    <Card className="bg-teal-soft">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4">
-        <CardTitle className="text-lg">Review status</CardTitle>
-        <div className="flex items-center gap-2">
-          <ReviewStatusBadge status={rule.review_status} />
-          <ConfidenceMeter confidence={rule.confidence} />
-        </div>
+        <CardTitle className="text-lg text-ink">Review status</CardTitle>
+        <ReviewStatusBadge status={rule.review_status} />
       </CardHeader>
       <CardContent className="space-y-4">
+        <ConfidenceMeter confidence={rule.confidence} variant="full" />
         {rule.notes.length > 0 && (
           <div className="space-y-1">
-            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              Notes
+            <p className="font-mono text-xs font-bold tracking-widest text-ink-soft uppercase">
+              Reviewer notes
             </p>
-            <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
+            <div className="space-y-2 text-sm text-ink">
               {rule.notes.map(note => (
-                <li key={note}>{note}</li>
+                <p key={note}>{note}</p>
               ))}
-            </ul>
+            </div>
+            <p className="font-mono text-xs text-ink-soft">
+              {rule.reviewed_by
+                ? `reviewed by ${rule.reviewed_by}${rule.reviewed_at ? ` on ${new Date(rule.reviewed_at).toLocaleString()}` : ''}`
+                : 'flagged by system · not yet reviewed'}
+            </p>
           </div>
         )}
-        {rule.reviewed_by && (
-          <p className="text-sm text-muted-foreground">
-            Reviewed by {rule.reviewed_by}
+        {rule.notes.length === 0 && rule.reviewed_by && (
+          <p className="font-mono text-xs text-ink-soft">
+            reviewed by {rule.reviewed_by}
             {rule.reviewed_at && ` on ${new Date(rule.reviewed_at).toLocaleString()}`}
           </p>
         )}
         {canAct && (
           <>
-            {!canApprove && (
-              <p className="text-sm text-destructive">
-                No valid citation on file — this rule cannot be approved.
-              </p>
-            )}
             <div className="flex flex-wrap items-center gap-3">
               <ApproveDialog ruleId={rule.id} disabled={!canApprove} />
               <RejectDialog ruleId={rule.id} />
             </div>
+            {!canApprove && (
+              <div className="rounded-sm border border-teal-deep/40 bg-sand-50 p-3 text-sm text-ink-muted">
+                Approve is blocked — this rule has no valid source citation. Add or fix the citation
+                before it can be approved.
+              </div>
+            )}
           </>
         )}
       </CardContent>

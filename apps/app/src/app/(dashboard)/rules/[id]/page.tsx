@@ -28,7 +28,7 @@ export default async function RuleDetailPage({ params }: RuleDetailPageProps) {
   });
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 px-6 py-12">
+    <div className="mx-auto w-full max-w-5xl space-y-6 px-8 py-12 lg:px-12">
       <HydrationBoundary state={dehydrate(queryClient)}>
         <RuleDetail id={id} />
       </HydrationBoundary>

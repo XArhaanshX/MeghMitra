@@ -1,7 +1,10 @@
 'use client';
 
+import Link from 'next/link';
+
 import { useRule, useRuleCitation } from '@/api/rules-hooks';
 import { CitationPanel } from '@/components/citation';
+import { ReviewStatusBadge } from '@/components/rules';
 import { ErrorState } from '@/components/shared';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -32,12 +35,23 @@ export function RuleDetail({ id }: RuleDetailProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {rule.fields.crop ?? 'Crop not specified'}
-        </h1>
-        <p className="text-muted-foreground">{rule.fields.condition}</p>
+    <div className="space-y-8">
+      <Link
+        href="/rules"
+        className="inline-flex items-center gap-1 font-mono text-xs font-bold tracking-widest text-ink-soft uppercase hover:text-ink"
+      >
+        ← Rules
+      </Link>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="space-y-2">
+          <p className="font-mono text-xs font-bold tracking-widest text-teal-deep uppercase">
+            {rule.fields.crop ?? 'Crop not specified'}
+          </p>
+          <h1 className="max-w-3xl font-heading text-3xl leading-tight font-bold tracking-tight text-ink sm:text-4xl">
+            {rule.fields.condition}
+          </h1>
+        </div>
+        <ReviewStatusBadge status={rule.review_status} />
       </div>
       <CitationPanel citation={citation} isLoading={citationPending} />
       <RuleFields fields={rule.fields} />

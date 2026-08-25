@@ -13,18 +13,18 @@ export function HealthPill() {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium',
-        isPending && 'border-border text-muted-foreground',
-        isUp && 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
-        !isPending && !isUp && 'border-destructive/40 bg-destructive/10 text-destructive'
+        'inline-flex items-center gap-2 rounded-full border-2 border-ink px-3 py-1 font-mono text-xs font-bold tracking-wide uppercase',
+        isPending && 'bg-sand-100 text-ink-soft',
+        isUp && 'bg-moss-soft text-moss',
+        !isPending && !isUp && 'bg-destructive text-destructive-foreground'
       )}
     >
       <span
         className={cn(
-          'size-1.5 rounded-full',
-          isPending && 'bg-muted-foreground',
-          isUp && 'bg-emerald-500',
-          !isPending && !isUp && 'bg-destructive'
+          'size-2 shrink-0 rounded-full',
+          isPending && 'bg-ink-soft',
+          isUp && 'bg-moss',
+          !isPending && !isUp && 'bg-destructive-foreground'
         )}
       />
       {label}
