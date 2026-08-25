@@ -237,3 +237,4 @@ data/processed/*
 data/raw/*
 !data/raw/HAR16-Sirsa-30-06-2011.pdf
 
+apps/app/next-env.d.ts
