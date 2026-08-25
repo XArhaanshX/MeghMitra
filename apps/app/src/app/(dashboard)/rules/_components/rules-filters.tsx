@@ -32,7 +32,7 @@ export function RulesFilters() {
 
   return (
     <div className="flex flex-wrap items-end gap-4">
-      <div className="space-y-1.5">
+      <div className="flex flex-col gap-1.5">
         <Label htmlFor="rules-district">District</Label>
         <Input
           id="rules-district"
@@ -41,7 +41,7 @@ export function RulesFilters() {
           className="w-40"
         />
       </div>
-      <div className="space-y-1.5">
+      <div className="flex flex-col gap-1.5">
         <Label htmlFor="rules-status">Review status</Label>
         <Select
           value={filters.review_status ?? ALL_VALUE}
