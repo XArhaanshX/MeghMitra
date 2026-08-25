@@ -44,6 +44,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
+from ankur_schemas.condition import ConditionCode
+
 
 class AdvisoryAction(StrEnum):
     """What the farmer is told to do.
@@ -82,6 +84,37 @@ range precisely so nobody has to trust this number."""
 
 HYSTERESIS_CYCLES: Final[int] = 2
 """Consecutive cycles a threshold crossing must persist before advice changes."""
+
+PROBABILITY_DRIVEN_CONDITIONS: Final[frozenset[ConditionCode]] = frozenset(
+    {ConditionCode.DRY_SPELL_AFTER_SOWING, ConditionCode.MID_SEASON_DRY_SPELL}
+)
+"""Conditions whose action `decide` is entitled to choose.
+
+Everything in this module reasons about *one* quantity: the probability that a
+dry spell begins within the lead window. `WAIT` means "dry-spell risk exceeds
+your tolerance"; `RE_SOW` means "a spell is likely to have damaged the crop".
+Neither sentence is about rain, and neither is about onset.
+
+This set exists because the end-to-end path made that implicit assumption
+reachable and then violated it. Once real DACP rules were joined in, an
+`UNSEASONAL_RAIN` detection -- a *flood* row, whose plan text says "Drainage, if
+depth of standing water is > 5-6 cm" -- was handed to `decide`, which saw a
+dry-spell probability of 0.54, saw the crop was sown, and returned `RE_SOW`.
+Telling a farmer to buy seed again because their field is under water is the
+exact failure this product exists to prevent, and it arrived not from a bad model
+but from routing a condition through a decision rule that was never about it.
+
+`TERMINAL_DROUGHT` is deliberately absent even though it is a moisture deficit:
+its DACP response is harvest and fodder management, not re-sowing, and re-sowing
+at maturity is agronomically meaningless.
+
+Conditions outside this set are detected, counted, and abstained on with a stated
+reason. They are not unservable in principle -- their plan rows are perfectly
+good advice, and the condition is *observed* rather than forecast, so no
+threshold is needed to act on them. Serving them needs an advisory action that
+means "the plan's row applies", which is a change to what a Block Agriculture
+Officer sees and belongs to the team, not to a wiring commit. See
+`docs/ml-pipeline.md`."""
 
 
 @dataclass(frozen=True, slots=True)

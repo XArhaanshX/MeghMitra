@@ -32,7 +32,19 @@ from document_intelligence.validator import validate_draft
 logger = logging.getLogger("ankur.seed")
 
 FIXTURE_NAME = "sirsa_demo_seed.json"
-PDF_RELATIVE = Path("data") / "raw" / "HAR16-Sirsa-30-06-2011.pdf"
+PDF_NAME = "HAR16-Sirsa-30-06-2011.pdf"
+PDF_CANDIDATE_DIRS = (
+    Path("data") / "raw" / "Haryana",
+    Path("data") / "raw",
+)
+"""Where the Sirsa plan may live, newest layout first.
+
+`scripts/download_dacp.py` files every plan under `data/raw/<State>/`, and the
+top-level copy this module used to point at was removed when that downloader
+landed. The old path is kept as a fallback for checkouts that still have it.
+Resolving instead of hard-coding is what stops this from silently breaking again
+the next time the corpus is reorganized."""
+
 DEMO_MARKER = "ankur-demo-seed"
 EXTRACTOR_VERSION = "demo-seed/0.1.0"
 
@@ -128,12 +140,32 @@ async def _ensure_document(documents: DocumentService, meta: dict) -> DocumentMe
     )
 
 
+def _pdf_path() -> Path | None:
+    """Locate the Sirsa plan, or None if this checkout has not downloaded it."""
+    root = _repo_root()
+    for directory in PDF_CANDIDATE_DIRS:
+        candidate = root / directory / PDF_NAME
+        if candidate.exists():
+            return candidate
+    return None
+
+
 async def _ensure_pages(documents: DocumentService, document: DocumentMetadata) -> None:
     """Attach real PDF page text so citation re-check and GET /pages work."""
     if await documents.list_pages(document.id):
         return
-    pdf_path = _repo_root() / PDF_RELATIVE
-    if not pdf_path.exists():
+    pdf_path = _pdf_path()
+    if pdf_path is None:
+        # Loud, because the consequence is silent and specific: without page text
+        # `citation_appears_on_page` cannot verify anything, so it returns
+        # "cannot verify" and every seeded citation passes unchecked. A seed that
+        # quietly weakens a safety check is worse than one that fails.
+        logger.warning(
+            "%s not found under %s; seeding without page text, so citation "
+            "snippets will NOT be verified against the source page",
+            PDF_NAME,
+            " or ".join(str(directory) for directory in PDF_CANDIDATE_DIRS),
+        )
         return
     _, pages = load_document(pdf_path, district=document.district, state=document.state)
     remapped = [page.model_copy(update={"document_id": document.id}) for page in pages]
@@ -141,8 +173,8 @@ async def _ensure_pages(documents: DocumentService, document: DocumentMetadata) 
 
 
 def _pdf_sha256() -> str | None:
-    pdf_path = _repo_root() / PDF_RELATIVE
-    if not pdf_path.exists():
+    pdf_path = _pdf_path()
+    if pdf_path is None:
         return None
     return hashlib.sha256(pdf_path.read_bytes()).hexdigest()
 

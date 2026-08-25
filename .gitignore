@@ -229,3 +229,11 @@ node_modules/
 # Generated ingestion output (reproducible via `make ingest`) -- do not commit.
 data/processed/*
 !data/processed/.gitkeep
+
+# DACP source PDFs (hundreds of MB, reproducible via `uv run python scripts/download_dacp.py`)
+# -- do not commit the full corpus. Exception: the Sirsa demo PDF is the one fixture the
+# integration tests, `make seed`, and the API Docker image depend on directly (see
+# docs/document-intelligence.md, tests/conftest.py, apps/api/Dockerfile) -- keep it tracked.
+data/raw/*
+!data/raw/HAR16-Sirsa-30-06-2011.pdf
+
