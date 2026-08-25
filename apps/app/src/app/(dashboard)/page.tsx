@@ -26,7 +26,7 @@ export default async function HomePage() {
     <div className="mx-auto w-full max-w-5xl space-y-8 px-8 py-12 lg:px-12">
       <div className="space-y-4">
         <p className="font-mono text-xs font-bold tracking-widest text-teal-deep uppercase">
-          Field Record advisory system
+          Ankur advisory system
         </p>
         <h1 className="max-w-2xl font-heading text-4xl leading-tight font-bold tracking-tight text-ink sm:text-5xl">
           Retrieves pre-approved actions. Never generates advice.
