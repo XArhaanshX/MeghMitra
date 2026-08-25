@@ -52,3 +52,37 @@ approved` rules regardless of the confidence they were extracted at. See
 implementations in `apps/api/app/db.py` structurally (no shared base class needed). Tests get
 real behavior (state actually persists across calls within a test) without a live database or a
 mocking framework standing in for one.
+
+## ISO 3166-2:IN state codes, not LGD codes -- and districts derived from the corpus, not a hand-authored gazetteer
+
+`packages/geo` (`ankur_geo`) needed a stable identity for India's 36 states/UTs before the
+India-wide migration could key anything on `(state, district)`. Two choices, both documented in
+`packages/geo/src/ankur_geo/states.py` and `districts.py`:
+
+- **State identity is the ISO 3166-2:IN subdivision code** (`"HR"`, not a numeric Local
+  Government Directory code), even though LGD codes are the correct long-term join key for most
+  government datasets. This codebase has no verified source for the real LGD numbers in this
+  environment, and hardcoding fabricated ones would be exactly the guessed-not-nullable value
+  `AGENTS.md` already prohibits for rule fields -- just applied to geography instead. ISO
+  3166-2:IN is a public, checkable standard and stable today; `State.lgd_code` stays an explicit
+  `int | None`, `None` until a real LGD extract is imported, rather than invented.
+- **Districts are derived by scanning the ingested `data/processed/` corpus**
+  (`ankur_geo.districts.build_district_index`), not typed in from an external gazetteer. Ankur
+  only needs to resolve districts it actually has a DACP for; a hand-authored national district
+  list would claim coverage the corpus doesn't have and would drift the moment a new document is
+  ingested. The generated snapshot (`ankur_geo._districts_generated`, produced by
+  `scripts/generate_geo_reference.py`) is committed so resolution works without the 326 MB,
+  gitignored `data/processed/` directory being present at import time.
+
+## `RuleStore` keyed on `(state, district, condition_code)`, not `(district, condition_code)`
+
+Indexing rules on district name and condition code alone looked equivalent to including state
+until the corpus went national: several district names repeat across states (Bijapur in
+Karnataka and Chhattisgarh, Balrampur in Uttar Pradesh and Chhattisgarh, and five more --
+`services/trigger-engine/src/trigger_engine/rulestore.py`'s module docstring names all seven).
+`RuleStore.candidates()` on the old two-part key would silently return whichever state's
+contingency plan happened to load first for a shared district name -- not a hypothetical, it
+reproduced on the real corpus. `state` is now a required first argument to `candidates()`, and
+`ankur_geo.resolve_region()` is the single reusable place every other caller (ingestion, the
+API, the CLI) gets the same "refuse to guess, name the ambiguity" behavior instead of
+re-implementing the two-key lookup.

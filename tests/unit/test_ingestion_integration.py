@@ -193,13 +193,17 @@ class TestDistrictNaming:
 def _rule(
     *,
     code: ConditionCode | None,
+    state: str = "Haryana",
+    district: str = "Sirsa",
     page: int = 9,
     status: ReviewStatus = ReviewStatus.NEEDS_REVIEW,
     document_id: str | None = None,
 ) -> DACPRule:
     return DACPRule(
         document_id=document_id,
-        fields=DACPRuleFields(district="Sirsa", condition="test condition", condition_code=code),
+        fields=DACPRuleFields(
+            state=state, district=district, condition="test condition", condition_code=code
+        ),
         citation=Citation(document="HAR16-Sirsa-30-06-2011.pdf", page=page),
         confidence=0.7,
         extractor_version="test/1.0",
@@ -208,68 +212,158 @@ def _rule(
     )
 
 
-@pytest.fixture
-def store(tmp_path) -> RuleStore:
-    """A one-document corpus in the on-disk shape `ingest_all_dacp.py` writes."""
-    document_id = str(uuid4())
+def _write_document(
+    tmp_path,
+    *,
+    subdir: str,
+    filename: str,
+    district: str,
+    state: str,
+    page_count: int,
+    rules: list[DACPRule],
+) -> None:
+    """Write one document + its rules in the on-disk shape `ingest_all_dacp.py` writes."""
+    document_id = rules[0].document_id if rules else str(uuid4())
     payload = {
         "document": {
-            "id": document_id,
-            "filename": "HAR16-Sirsa-30-06-2011.pdf",
-            "district": "Sirsa",
-            "state": "Haryana",
-            "page_count": 31,
+            "id": str(document_id),
+            "filename": filename,
+            "district": district,
+            "state": state,
+            "page_count": page_count,
             "status": "registered",
             "registered_at": "2026-08-24T20:46:19.230985Z",
         },
         "run": {},
-        "rules": [
-            json.loads(
-                _rule(
-                    code=ConditionCode.DRY_SPELL_AFTER_SOWING, document_id=document_id
-                ).model_dump_json()
-            ),
-            json.loads(
-                _rule(code=ConditionCode.UNMAPPED, document_id=document_id).model_dump_json()
-            ),
-            # Cites page 44 of a 31-page document. The real Sirsa fixture does
-            # exactly this, which is why the page bound exists.
-            json.loads(
-                _rule(
-                    code=ConditionCode.MID_SEASON_DRY_SPELL, page=44, document_id=document_id
-                ).model_dump_json()
-            ),
-        ],
+        "rules": [json.loads(rule.model_dump_json()) for rule in rules],
     }
-    target = tmp_path / "sirsa" / "HAR16-Sirsa-30-06-2011.json"
+    target = tmp_path / subdir / filename.replace(".pdf", ".json")
     target.parent.mkdir(parents=True)
     target.write_text(json.dumps(payload), encoding="utf-8")
+
+
+@pytest.fixture
+def store(tmp_path) -> RuleStore:
+    """A one-document corpus in the on-disk shape `ingest_all_dacp.py` writes."""
+    document_id = str(uuid4())
+    _write_document(
+        tmp_path,
+        subdir="sirsa",
+        filename="HAR16-Sirsa-30-06-2011.pdf",
+        district="Sirsa",
+        state="Haryana",
+        page_count=31,
+        rules=[
+            _rule(code=ConditionCode.DRY_SPELL_AFTER_SOWING, document_id=document_id),
+            _rule(code=ConditionCode.UNMAPPED, document_id=document_id),
+            # Cites page 44 of a 31-page document. The real Sirsa fixture does
+            # exactly this, which is why the page bound exists.
+            _rule(code=ConditionCode.MID_SEASON_DRY_SPELL, page=44, document_id=document_id),
+        ],
+    )
     return RuleStore.from_processed(tmp_path)
 
 
 class TestRuleStore:
-    def test_rules_are_indexed_by_district_and_code(self, store: RuleStore) -> None:
-        assert len(store.candidates("Sirsa", ConditionCode.DRY_SPELL_AFTER_SOWING)) == 1
+    def test_rules_are_indexed_by_state_district_and_code(self, store: RuleStore) -> None:
+        assert len(store.candidates("Haryana", "Sirsa", ConditionCode.DRY_SPELL_AFTER_SOWING)) == 1
 
     def test_unmapped_rules_are_counted_but_never_served(self, store: RuleStore) -> None:
         assert store.coverage().unmapped_rules == 1
-        assert store.candidates("Sirsa", ConditionCode.UNMAPPED) == []
+        assert store.candidates("Haryana", "Sirsa", ConditionCode.UNMAPPED) == []
 
     def test_unknown_district_returns_nothing_rather_than_a_neighbour(
         self, store: RuleStore
     ) -> None:
         """Serving a different district's plan would be inventing advice."""
-        assert store.candidates("Fatehabad", ConditionCode.DRY_SPELL_AFTER_SOWING) == []
+        assert store.candidates("Haryana", "Fatehabad", ConditionCode.DRY_SPELL_AFTER_SOWING) == []
+
+    def test_wrong_state_for_a_real_district_returns_nothing(self, store: RuleStore) -> None:
+        """Sirsa is a Haryana district; asking for it under any other state must abstain,
+        not silently fall back to the Haryana plan."""
+        assert store.candidates("Punjab", "Sirsa", ConditionCode.DRY_SPELL_AFTER_SOWING) == []
 
     def test_page_count_is_available_for_the_citation_bound(self, store: RuleStore) -> None:
-        rule = store.candidates("Sirsa", ConditionCode.DRY_SPELL_AFTER_SOWING)[0]
+        rule = store.candidates("Haryana", "Sirsa", ConditionCode.DRY_SPELL_AFTER_SOWING)[0]
         assert store.page_count_for(rule) == 31
+
+
+class TestCrossStateDistrictCollisions:
+    """Real duplicate district names in the corpus: same name, different state,
+    different government plan. `candidates()` must never merge them -- doing so
+    was a proven bug (RuleStore keyed on district alone) that would cite one
+    state's contingency action under another state's name."""
+
+    @pytest.mark.parametrize(
+        ("district", "state_a", "state_b"),
+        [
+            ("Aurangabad", "Bihar", "Maharashtra"),
+            ("Balrampur", "Uttar Pradesh", "Chhattisgarh"),
+            ("Bijapur", "Karnataka", "Chhattisgarh"),
+            ("Bilaspur", "Chhattisgarh", "Himachal Pradesh"),
+            ("Hamirpur", "Himachal Pradesh", "Uttar Pradesh"),
+            ("Pratapgarh", "Uttar Pradesh", "Rajasthan"),
+            ("Raigarh", "Maharashtra", "Chhattisgarh"),
+        ],
+    )
+    def test_same_named_districts_stay_isolated_by_state(
+        self, tmp_path, district: str, state_a: str, state_b: str
+    ) -> None:
+        doc_a_id, doc_b_id = str(uuid4()), str(uuid4())
+        _write_document(
+            tmp_path,
+            subdir="a",
+            filename=f"{state_a}-{district}.pdf",
+            district=district,
+            state=state_a,
+            page_count=20,
+            rules=[
+                _rule(
+                    code=ConditionCode.MID_SEASON_DRY_SPELL,
+                    state=state_a,
+                    district=district,
+                    document_id=doc_a_id,
+                )
+            ],
+        )
+        _write_document(
+            tmp_path,
+            subdir="b",
+            filename=f"{state_b}-{district}.pdf",
+            district=district,
+            state=state_b,
+            page_count=20,
+            rules=[
+                _rule(
+                    code=ConditionCode.MID_SEASON_DRY_SPELL,
+                    state=state_b,
+                    district=district,
+                    document_id=doc_b_id,
+                )
+            ],
+        )
+        collision_store = RuleStore.from_processed(tmp_path)
+
+        # The corpus knows both states publish a plan for this district name.
+        assert set(collision_store.states_for_district(district)) == {state_a, state_b}
+
+        from_a = collision_store.candidates(state_a, district, ConditionCode.MID_SEASON_DRY_SPELL)
+        from_b = collision_store.candidates(state_b, district, ConditionCode.MID_SEASON_DRY_SPELL)
+
+        assert len(from_a) == 1 and str(from_a[0].document_id) == doc_a_id
+        assert len(from_b) == 1 and str(from_b[0].document_id) == doc_b_id
+
+        # No cross-contamination in either direction. The name IS ambiguous
+        # (that's a fact about India's districts, not a bug) -- coverage()
+        # reports it as such, but candidates() never merges the two states.
+        assert from_a != from_b
+        assert collision_store.coverage().district_name_collisions == 1
 
 
 class TestSafetyClaims:
     def test_unreviewed_rules_never_emit(self, store: RuleStore) -> None:
         """The corpus has 9,103 rules and zero approvals. All of them must abstain."""
-        rule = store.candidates("Sirsa", ConditionCode.DRY_SPELL_AFTER_SOWING)[0]
+        rule = store.candidates("Haryana", "Sirsa", ConditionCode.DRY_SPELL_AFTER_SOWING)[0]
         assert rule.review_status is ReviewStatus.NEEDS_REVIEW
 
         may_emit, reasons = can_emit_advisory(
@@ -280,12 +374,12 @@ class TestSafetyClaims:
 
     def test_simulated_approval_still_enforces_citation_bounds(self, store: RuleStore) -> None:
         """The demo shortcut simulates judgement, never a check a machine can make."""
-        out_of_range = store.candidates("Sirsa", ConditionCode.MID_SEASON_DRY_SPELL)
+        out_of_range = store.candidates("Haryana", "Sirsa", ConditionCode.MID_SEASON_DRY_SPELL)
         assert out_of_range, "fixture should provide a rule citing page 44 of 31"
         assert simulate_reviewer_approval(out_of_range, store) == []
 
         approved = simulate_reviewer_approval(
-            store.candidates("Sirsa", ConditionCode.DRY_SPELL_AFTER_SOWING), store
+            store.candidates("Haryana", "Sirsa", ConditionCode.DRY_SPELL_AFTER_SOWING), store
         )
         assert len(approved) == 1
         assert approved[0].review_status is ReviewStatus.APPROVED
@@ -339,7 +433,7 @@ class TestSafetyClaims:
             block_id="Baragudha",
             as_of=date(2025, 7, 16),
             soil_moisture_fraction=0.10,
-            consecutive_dry_days=9,
+            consecutive_dry_days=17,
             days_since_sowing=11,
             rain_3d_mm=0.0,
             rain_3d_normal_mm=15.0,

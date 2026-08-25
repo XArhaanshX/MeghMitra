@@ -20,10 +20,14 @@ export const conditionCodeSchema = z
   .nullable();
 export type ConditionCode = z.infer<typeof conditionCodeSchema>;
 
-// Mirrors ankur_schemas.rule.DACPRuleFields. Every field but `district`/`condition`
-// is nullable by design -- a `null` means the DACP document didn't specify it, not
-// that extraction failed. Never default/guess a value here.
+// Mirrors ankur_schemas.rule.DACPRuleFields. `state`/`district`/`condition` are
+// required (the backend added `state` alongside `district` to fix a real bug:
+// district names repeat across states, e.g. Bijapur exists in both Karnataka
+// and Chhattisgarh -- state is required for that lookup to be unambiguous).
+// Every other field is nullable by design -- `null` means the DACP document
+// didn't specify it, not that extraction failed. Never default/guess a value here.
 export const dacpRuleFieldsSchema = z.object({
+  state: z.string(),
   district: z.string(),
   block: z.string().nullable(),
   farming_situation: z.string().nullable(),

@@ -1,0 +1,163 @@
+{
+  "_comment": "Hand-curated demo rules for two states beyond the flagship Sirsa/Haryana demo, citing pages that exist in the real ingested PDFs (see data/processed/nagaland/dimapur and data/processed/manipur/mpurimphaleast). Both source plans are short (<=19 pages) so in-range citations are easy to verify by hand: NL1_Dimapur_28.12.2013.pdf has 19 pages, MPUR_2_Imphal-east.pdf has 18. Condition text and actions are cleaned-up paraphrases of the real DACP table rows at the cited page (see the messy raw extractor output for the same pages in data/processed/<state>/<district>/*.json) -- this is a hand-curated demo fixture, not extractor output, so it is loaded as drafts, validated, then approved via ReviewService exactly like sirsa_demo_seed.json, never inserted as approved. Haryana/Sirsa is intentionally NOT duplicated here -- app.seed.seed_multi_state_demo loads it from sirsa_demo_seed.json directly (see that function's docstring).",
+  "states": [
+    {
+      "document": {
+        "filename": "NL1_Dimapur_28.12.2013.pdf",
+        "district": "Dimapur",
+        "state": "Nagaland",
+        "page_count": 19
+      },
+      "drafts": [
+        {
+          "fields": {
+            "state": "Nagaland",
+            "district": "Dimapur",
+            "block": null,
+            "farming_situation": "Plain land, moderately deep to deep fine/fine loamy soils (AES-II)",
+            "crop": "Kharif maize",
+            "soil": null,
+            "crop_stage": "Before sowing",
+            "condition": "Early season drought (delayed onset) -- delay by 2 weeks (2nd to 3rd week of April)",
+            "condition_code": "delayed_onset",
+            "action": "No change to the cropping system; sow in ridge and furrow with mulching under Line Department schemes / RKVY.",
+            "variety": "DA-61 A / RCM-75 / RCM-76",
+            "seed_rate": null,
+            "actor": "State Agriculture Department"
+          },
+          "citation": {
+            "document": "NL1_Dimapur_28.12.2013.pdf",
+            "page": 10,
+            "source_text": "Early season drought (delayed onset) Delay by 2 weeks (2nd to 3rd week of April)"
+          },
+          "confidence": 0.9
+        },
+        {
+          "fields": {
+            "state": "Nagaland",
+            "district": "Dimapur",
+            "block": null,
+            "farming_situation": "Plain land, moderately deep to deep fine/fine loamy soils (AES-II)",
+            "crop": "Kharif maize",
+            "soil": null,
+            "crop_stage": "After sowing",
+            "condition": "Normal onset followed by 15-20 days dry spell after sowing leading to poor germination/crop stand etc.",
+            "condition_code": "dry_spell_after_sowing",
+            "action": "If germination is below 30%, re-sow; gap-fill with locally available seedlings; take up in-situ moisture conservation and mulching; life-saving irrigation if possible.",
+            "variety": null,
+            "seed_rate": null,
+            "actor": "State Agriculture Department"
+          },
+          "citation": {
+            "document": "NL1_Dimapur_28.12.2013.pdf",
+            "page": 13,
+            "source_text": "Normal onset followed by 15-20 days dry spell after sowing leading to poor germination/crop stand etc."
+          },
+          "confidence": 0.88
+        },
+        {
+          "fields": {
+            "state": "Nagaland",
+            "district": "Dimapur",
+            "block": null,
+            "farming_situation": "Plain land, moderately deep to deep fine/fine loamy soils (AES-II)",
+            "crop": "Kharif maize",
+            "soil": null,
+            "crop_stage": "Maturity",
+            "condition": "Terminal drought (early withdrawal of monsoon)",
+            "condition_code": "terminal_drought",
+            "action": "If grain filling is severely affected, harvest for fodder; otherwise harvest at physiological maturity; prepare land for early rabi sowing of linseed, toria or buckwheat.",
+            "variety": null,
+            "seed_rate": null,
+            "actor": "State Agriculture Department"
+          },
+          "citation": {
+            "document": "NL1_Dimapur_28.12.2013.pdf",
+            "page": 15,
+            "source_text": "Terminal drought (early withdrawal of monsoon)"
+          },
+          "confidence": 0.91
+        }
+      ]
+    },
+    {
+      "document": {
+        "filename": "MPUR_2_Imphal-east.pdf",
+        "district": "Mpur Imphal east",
+        "state": "Manipur",
+        "page_count": 18
+      },
+      "drafts": [
+        {
+          "fields": {
+            "state": "Manipur",
+            "district": "Mpur Imphal east",
+            "block": null,
+            "farming_situation": "Sub-tropical middle high land (AES-I)",
+            "crop": "Paddy / Paddy-Rapeseed mustard / Pea",
+            "soil": null,
+            "crop_stage": "Before sowing",
+            "condition": "Early season drought (delayed onset) -- delay by 2 weeks (June 3rd week)",
+            "condition_code": "delayed_onset",
+            "action": "No change to the cropping system; if onset delays further, advance-plough the field (April-May) and use a Dapog nursery with direct sowing of rice.",
+            "variety": null,
+            "seed_rate": null,
+            "actor": "State Agriculture Department"
+          },
+          "citation": {
+            "document": "MPUR_2_Imphal-east.pdf",
+            "page": 8,
+            "source_text": "Early season drought (delayed onset) Delay by 2 weeks (June 3rd week)"
+          },
+          "confidence": 0.89
+        },
+        {
+          "fields": {
+            "state": "Manipur",
+            "district": "Mpur Imphal east",
+            "block": null,
+            "farming_situation": "Sub-tropical middle high land (AES-I)",
+            "crop": "Paddy / Paddy-Rapeseed mustard / Pea",
+            "soil": null,
+            "crop_stage": "After sowing",
+            "condition": "Normal onset followed by 15-20 days dry spell after sowing leading to poor germination/crop stand etc.",
+            "condition_code": "dry_spell_after_sowing",
+            "action": "No change to the cropping system; switch to direct-seeded paddy where germination is affected.",
+            "variety": null,
+            "seed_rate": null,
+            "actor": "State Agriculture Department"
+          },
+          "citation": {
+            "document": "MPUR_2_Imphal-east.pdf",
+            "page": 10,
+            "source_text": "Normal onset followed by 15-20 days dry spell after sowing leading to poor germination / crop stand etc"
+          },
+          "confidence": 0.87
+        },
+        {
+          "fields": {
+            "state": "Manipur",
+            "district": "Mpur Imphal east",
+            "block": null,
+            "farming_situation": "Sub-tropical middle high land (AES-I)",
+            "crop": "Paddy / Paddy-Rapeseed mustard / Pea",
+            "soil": null,
+            "crop_stage": "Reproductive",
+            "condition": "Mid season drought (long dry spell) at reproductive stage",
+            "condition_code": "mid_season_dry_spell",
+            "action": "Provide light irrigation where possible; top-dress with urea (or foliar application) to support crop recovery.",
+            "variety": null,
+            "seed_rate": null,
+            "actor": "State Agriculture Department"
+          },
+          "citation": {
+            "document": "MPUR_2_Imphal-east.pdf",
+            "page": 11,
+            "source_text": "Mid season drought (long dry spell) At reproductive stage"
+          },
+          "confidence": 0.86
+        }
+      ]
+    }
+  ]
+}

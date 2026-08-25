@@ -14,6 +14,7 @@ resolution-markers = [
 members = [
     "ankur-api",
     "ankur-domain",
+    "ankur-geo",
     "ankur-schemas",
     "document-intelligence",
     "trigger-engine",
@@ -33,6 +34,7 @@ version = "0.1.0"
 source = { editable = "apps/api" }
 dependencies = [
     { name = "ankur-domain" },
+    { name = "ankur-geo" },
     { name = "ankur-schemas" },
     { name = "asyncpg" },
     { name = "document-intelligence" },
@@ -45,6 +47,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "ankur-domain", editable = "packages/domain" },
+    { name = "ankur-geo", editable = "packages/geo" },
     { name = "ankur-schemas", editable = "packages/schemas" },
     { name = "asyncpg", specifier = ">=0.30" },
     { name = "document-intelligence", editable = "services/document-intelligence" },
@@ -64,6 +67,11 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "ankur-schemas", editable = "packages/schemas" }]
+
+[[package]]
+name = "ankur-geo"
+version = "0.1.0"
+source = { editable = "packages/geo" }
 
 [[package]]
 name = "ankur-schemas"
@@ -183,6 +191,7 @@ version = "0.1.0"
 source = { editable = "services/document-intelligence" }
 dependencies = [
     { name = "ankur-domain" },
+    { name = "ankur-geo" },
     { name = "ankur-schemas" },
     { name = "pypdf" },
 ]
@@ -196,6 +205,7 @@ ocr = [
 [package.metadata]
 requires-dist = [
     { name = "ankur-domain", editable = "packages/domain" },
+    { name = "ankur-geo", editable = "packages/geo" },
     { name = "ankur-schemas", editable = "packages/schemas" },
     { name = "pdf2image", marker = "extra == 'ocr'", specifier = ">=1.17" },
     { name = "pypdf", specifier = ">=5.1" },
@@ -951,6 +961,7 @@ version = "0.1.0"
 source = { editable = "services/trigger-engine" }
 dependencies = [
     { name = "ankur-domain" },
+    { name = "ankur-geo" },
     { name = "ankur-schemas" },
     { name = "numpy" },
     { name = "pandas" },
@@ -960,6 +971,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "ankur-domain", editable = "packages/domain" },
+    { name = "ankur-geo", editable = "packages/geo" },
     { name = "ankur-schemas", editable = "packages/schemas" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pandas", specifier = ">=2.2" },

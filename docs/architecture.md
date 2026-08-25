@@ -26,15 +26,15 @@ flowchart TD
     end
 ```
 
-## Layering
-
 ```text
 apps/api            <- thin FastAPI routes; imports ankur_domain + document_intelligence
 apps/app             <- Next.js dashboard; talks to apps/api over HTTP only
-services/document-intelligence  <- pure extraction pipeline; imports ankur_domain + ankur_schemas
+services/document-intelligence  <- pure extraction pipeline; imports ankur_domain + ankur_schemas + ankur_geo
 services/trigger-engine         <- weather -> moisture -> condition; imports ankur_domain + ankur_schemas
 packages/domain      <- ankur_domain: policies (pure functions), repository Protocols, services
 packages/schemas     <- ankur_schemas: Pydantic models; zero business logic, zero I/O
+packages/geo         <- ankur_geo: state/district identity, resolve_region(), season/threshold
+                          parameters; zero business logic, zero I/O, imports nothing internal
 ```
 
 `document_intelligence` and `trigger_engine` are siblings and never import each other. That is
@@ -44,8 +44,13 @@ trigger engine never creates a rule. They meet only through the database, and on
 nothing else.
 
 Dependency direction is one-way: `apps/api` and `document_intelligence` depend on `ankur_domain`,
-which depends on `ankur_schemas`. `ankur_schemas` depends on nothing internal. Nothing in
-`packages/` imports from `apps/` or `services/` — that would invert the dependency graph.
+which depends on `ankur_schemas`. `ankur_schemas` and `ankur_geo` depend on nothing internal --
+`ankur_geo` is a second leaf package. `document_intelligence` imports it directly (state
+resolution during ingestion, via `naming.py`). `trigger_engine`'s `RuleStore` does not import it
+yet -- it applies the identical fold/(state, district) discipline with its own local copy of the
+same folding logic, which is a real duplication to reconcile, not a documented design choice.
+Nothing in `packages/` imports from `apps/` or `services/` — that would invert the dependency
+graph.
 
 `document_intelligence` never imports `asyncpg`/Postgres code; persistence is wired in
 `apps/api/app/ingestion.py` (`IngestionService`), which is why the extraction pipeline can run

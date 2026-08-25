@@ -19,7 +19,7 @@ from ankur_schemas.rule import DACPRule, DACPRuleFields
 
 
 def _rule(citation: Citation, **overrides) -> DACPRule:
-    fields = DACPRuleFields(district="Sirsa", condition="dry spell")
+    fields = DACPRuleFields(state="Haryana", district="Sirsa", condition="dry spell")
     defaults = dict(
         fields=fields,
         citation=citation,

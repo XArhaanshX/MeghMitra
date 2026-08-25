@@ -16,6 +16,14 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
+    # Repo-relative (or absolute) paths to the DACP corpus. Defaults match the
+    # repo layout for local/dev runs. In the container image these are no
+    # longer baked in -- see apps/api/Dockerfile -- so point them at a
+    # mounted volume (e.g. `/app/data/raw`, `/app/data/processed`) when
+    # running there.
+    ankur_raw_root: str = "data/raw"
+    ankur_corpus_root: str = "data/processed"
+
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 

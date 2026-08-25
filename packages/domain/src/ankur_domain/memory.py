@@ -29,8 +29,14 @@ class InMemoryDocumentRepository:
     async def get(self, document_id: UUID) -> DocumentMetadata | None:
         return self._documents.get(document_id)
 
-    async def list(self) -> list[DocumentMetadata]:
-        return list(self._documents.values())
+    async def list(
+        self, *, state: str | None = None, limit: int = 50, offset: int = 0
+    ) -> list[DocumentMetadata]:
+        docs = list(self._documents.values())
+        if state is not None:
+            needle = state.casefold()
+            docs = [d for d in docs if d.state.casefold() == needle]
+        return docs[offset : offset + limit]
 
     async def update_status(self, document_id: UUID, status: str) -> None:
         doc = self._documents.get(document_id)
@@ -59,11 +65,21 @@ class InMemoryRuleRepository:
     async def get(self, rule_id: UUID) -> DACPRule | None:
         return self._rules.get(rule_id)
 
-    async def list(self, *, review_status: str | None = None) -> list[DACPRule]:
+    async def list(
+        self,
+        *,
+        review_status: str | None = None,
+        state: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[DACPRule]:
         rules = list(self._rules.values())
         if review_status is not None:
             rules = [r for r in rules if r.review_status == review_status]
-        return rules
+        if state is not None:
+            needle = state.casefold()
+            rules = [r for r in rules if r.fields.state.casefold() == needle]
+        return rules[offset : offset + limit]
 
     async def update(self, rule: DACPRule) -> DACPRule:
         self._rules[rule.id] = rule
@@ -96,8 +112,14 @@ class InMemoryTriggerEventRepository:
     async def get(self, event_id: UUID) -> TriggerEvent | None:
         return self._events.get(event_id)
 
-    async def list(self) -> list[TriggerEvent]:
-        return sorted(self._events.values(), key=lambda e: e.detected_at, reverse=True)
+    async def list(
+        self, *, state: str | None = None, limit: int = 50, offset: int = 0
+    ) -> list[TriggerEvent]:
+        events = sorted(self._events.values(), key=lambda e: e.detected_at, reverse=True)
+        if state is not None:
+            needle = state.casefold()
+            events = [e for e in events if str(e.payload.get("state") or "").casefold() == needle]
+        return events[offset : offset + limit]
 
 
 class InMemoryAdvisoryRepository:

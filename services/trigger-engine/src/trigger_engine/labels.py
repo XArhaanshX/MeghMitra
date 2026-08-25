@@ -26,6 +26,7 @@ t itself is in the target. Combined with features that read only t-1 and earlier
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Final
 
 import numpy as np
@@ -149,6 +150,7 @@ def effective_sample_size(
     *,
     lead_days: int,
     blocks: pd.Series | None = None,
+    region_of_block: Mapping[str, str] | None = None,
 ) -> dict[str, float]:
     """Honest accounting of how much independent information the labels carry.
 
@@ -172,12 +174,39 @@ def effective_sample_size(
     confidence interval several times too narrow. `seasons` is reported alongside
     because the season is the only axis along which samples are genuinely
     independent, and it is what `evaluation.block_bootstrap_ci` resamples over.
+
+    Args:
+        labels: `build_labels` output.
+        seasons: `preprocess.season_of` output, aligned to `labels`.
+        lead_days: The forecast horizon `labels` was built with.
+        blocks: Block id per row, aligned to `labels`. Required for the block
+            count and for `region_of_block`.
+        region_of_block: Maps block id -> region id (e.g. district). Blocks
+            within a region are still treated as one spatially-correlated
+            cluster (divided out entirely, as above); *across* regions, the
+            spatial correlation assumption no longer holds -- Sirsa's rain
+            tells you nothing about Chennai's -- so each region's estimate is
+            computed independently and summed. `None` (the default) pools
+            every block into a single region, reproducing today's behaviour
+            exactly. A block absent from the mapping is treated as its own
+            singleton region rather than silently dropped.
     """
     clean = labels.dropna()
     positives = float(clean.sum())
     n_blocks = float(blocks.loc[clean.index].nunique()) if blocks is not None else 1.0
 
-    independent = positives / max(lead_days, 1) / max(n_blocks, 1.0)
+    if region_of_block is not None and blocks is not None:
+        clean_blocks = blocks.loc[clean.index]
+        regions = clean_blocks.map(region_of_block).fillna(clean_blocks)
+        independent = 0.0
+        for region in regions.unique():
+            in_region = regions == region
+            region_positives = float(clean.loc[in_region].sum())
+            region_n_blocks = float(clean_blocks.loc[in_region].nunique())
+            independent += region_positives / max(lead_days, 1) / max(region_n_blocks, 1.0)
+    else:
+        independent = positives / max(lead_days, 1) / max(n_blocks, 1.0)
+
     return {
         "rows": float(len(clean)),
         "positives": positives,

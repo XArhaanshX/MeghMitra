@@ -134,7 +134,7 @@ def test_dry_spell_after_sowing_retrieves_the_approved_pearl_millet_rule(client:
         json=_evaluate_body(
             moisture=_moisture(
                 soil_moisture_fraction=0.2,
-                consecutive_dry_days=10,
+                consecutive_dry_days=17,
                 days_since_sowing=10,
             ),
             crop_already_sown=True,
@@ -157,7 +157,7 @@ def test_same_weather_before_sowing_is_wait_not_re_sow(client: TestClient):
         json=_evaluate_body(
             moisture=_moisture(
                 soil_moisture_fraction=0.2,
-                consecutive_dry_days=10,
+                consecutive_dry_days=17,
                 days_since_sowing=10,
             ),
             crop_already_sown=False,
@@ -226,7 +226,7 @@ def test_firing_advisory_is_listed(client: TestClient):
         json=_evaluate_body(
             moisture=_moisture(
                 soil_moisture_fraction=0.2,
-                consecutive_dry_days=10,
+                consecutive_dry_days=17,
                 days_since_sowing=10,
             ),
             crop_already_sown=True,

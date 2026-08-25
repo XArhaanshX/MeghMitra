@@ -23,11 +23,22 @@ class DACPRuleFields(BaseModel):
     """The extractable, DACP-specific content of a rule.
 
     Shared by `DACPRuleDraft` (pre-validation, extractor output) and
-    `DACPRule` (post-validation, persisted). Every field except `district`
-    and `condition` may legitimately be null -- the source document simply
-    may not specify it.
+    `DACPRule` (post-validation, persisted). Every field except `state`,
+    `district` and `condition` may legitimately be null -- the source
+    document simply may not specify it.
     """
 
+    state: str = Field(
+        ...,
+        description=(
+            "State/UT the plan applies to, e.g. 'Haryana'. Required, not optional -- "
+            "carried straight from the source `DocumentMetadata.state`, which is always "
+            "known at extraction time. Its absence here (fixed alongside this field's "
+            "addition) was the root cause of a cross-state rule collision: district names "
+            "repeat across states (e.g. Bijapur exists in both Karnataka and Chhattisgarh) "
+            "and a district-only lookup cannot tell them apart."
+        ),
+    )
     district: str = Field(..., description="District the plan applies to, e.g. 'Sirsa'.")
     block: str | None = Field(
         default=None, description="Block / locality, if the plan is that granular."

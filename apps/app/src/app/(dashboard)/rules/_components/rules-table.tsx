@@ -17,14 +17,11 @@ import {
 } from '@/components/ui/table';
 
 import { rulesFilterParsers } from './rules-filters';
-import { useDebouncedValue } from './use-debounced-value';
 
 export function RulesTable() {
   const [filters] = useQueryStates(rulesFilterParsers);
-  // District is free text -- debounce what feeds the fetch so typing doesn't
-  // fire a request per keystroke. review_status/advisory_eligible are
-  // discrete controls (select/checkbox) and don't need this.
-  const district = useDebouncedValue(filters.district, 400);
+  // Both state and district are now discrete Selects (rules-filters.tsx) --
+  // no debounce needed, a selection fires exactly one fetch.
   const {
     data: rules,
     isPending,
@@ -32,7 +29,8 @@ export function RulesTable() {
     refetch,
   } = useRules({
     reviewStatus: filters.review_status ?? undefined,
-    district: district || undefined,
+    state: filters.state ?? undefined,
+    district: filters.district ?? undefined,
     advisoryEligible: filters.advisory_eligible ?? undefined,
   });
 
@@ -51,13 +49,22 @@ export function RulesTable() {
   }
 
   if (rules.length === 0) {
-    return <EmptyState message="No rules. If this is a demo, run seed on the API." />;
+    return (
+      <EmptyState
+        message={
+          filters.state
+            ? `No rules for ${filters.state}${filters.district ? `, ${filters.district}` : ''}. This state's plan may not be ingested yet.`
+            : 'No rules. If this is a demo, run seed on the API.'
+        }
+      />
+    );
   }
 
   return (
     <Table>
       <TableHeader>
         <TableRow>
+          <TableHead>State / district</TableHead>
           <TableHead>Crop</TableHead>
           <TableHead>Condition</TableHead>
           <TableHead>Action</TableHead>
@@ -70,6 +77,9 @@ export function RulesTable() {
       <TableBody>
         {rules.map(rule => (
           <TableRow key={rule.id}>
+            <TableCell className="text-muted-foreground">
+              {rule.fields.state} / {rule.fields.district}
+            </TableCell>
             <TableCell>
               <Link href={`/rules/${rule.id}`} className="font-medium hover:underline">
                 {rule.fields.crop ?? 'Not specified'}

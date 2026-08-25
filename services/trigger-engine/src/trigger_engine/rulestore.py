@@ -14,12 +14,15 @@ without a database -- the same reason `make test` never requires live Postgres.
 
 THE INDEX IS THE POINT
 
-Rules are keyed on `(district, condition_code)` because that pair is exactly what
-`can_emit_advisory` checks: the rule must be for this district, and its
-`condition_code` must equal the code the weather produced. Indexing on anything
-else would mean scanning and filtering at emit time, and a filter that drifts
-from the policy is how a system starts emitting advice the policy would have
-refused.
+Rules are keyed on `(state, district, condition_code)` because that triple is
+exactly what `can_emit_advisory` checks: the rule must be for this district in
+this state, and its `condition_code` must equal the code the weather produced.
+Indexing on `(district, condition_code)` alone -- the original design -- looks
+equivalent until two states have a same-named district (Bijapur exists in both
+Karnataka and Chhattisgarh; Balrampur in both Uttar Pradesh and Chhattisgarh),
+at which point `candidates()` silently returns the wrong state's contingency
+plan. That is not a hypothetical: it reproduces on the real corpus. State is
+therefore part of the index key, not an optional filter layered on top.
 
 `UNMAPPED` rules are loaded and counted but are not reachable through
 `candidates()`. They are a coverage measurement -- "this many rows say something
@@ -48,21 +51,37 @@ _LEADING_INDEX = re.compile(r"^\d+")
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
 
-def district_key(name: str) -> str:
-    """Fold a district name to a stable lookup key.
+def _fold_region_name(name: str) -> str:
+    """Fold a region name to a stable lookup key.
 
-    District names reach us from three places that disagree: the DACP filename
+    Region names reach us from three places that disagree: the DACP filename
     (`1North_Goa`, `HAR16-Sirsa-30-06-2011`), the download directory
     (`Andaman___Nicobar_Islands`), and whatever a caller types (`Sirsa`,
-    `sirsa`). Folding to lowercase alphanumerics, with any leading serial number
-    stripped, makes those agree often enough to be useful.
+    `sirsa`, `Haryana`). Folding to lowercase alphanumerics, with any leading
+    serial number stripped, makes those agree often enough to be useful.
 
-    This is a lookup convenience and nothing more -- the key is never persisted,
-    never shown to a user, and never used to decide whether two rules are the
-    same rule.
+    This is a lookup convenience and nothing more -- the key is never
+    persisted and never shown to a user. It IS used to decide whether two
+    rules answer the same lookup, which is exactly why both `district_key` and
+    `state_key` must be combined: folding alone conflates same-named districts
+    across different states.
     """
     cleaned = _LEADING_INDEX.sub("", name.strip())
     return _NON_ALNUM.sub("", cleaned.casefold())
+
+
+def district_key(name: str) -> str:
+    """Fold a district name to a stable lookup key. See `_fold_region_name`."""
+    return _fold_region_name(name)
+
+
+def state_key(name: str) -> str:
+    """Fold a state name to a stable lookup key. See `_fold_region_name`.
+
+    Always combined with `district_key` when indexing or looking up rules --
+    never used alone, because district names collide across states.
+    """
+    return _fold_region_name(name)
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,12 +109,20 @@ class CoverageReport:
     deliberately including the counts that look bad: `unmapped_rules` and
     `approved_rules` are the two that say how far this is from serving farmers.
     """
-
     documents: int
     rules: int
     approved_rules: int
     unmapped_rules: int
     districts: int
+    district_name_collisions: int = 0
+    """District names (folded) shared by more than one state in the loaded
+    corpus -- e.g. Bijapur (Karnataka and Chhattisgarh). A nonzero count is a
+    fact about India's districts, not a bug: several genuinely do repeat
+    across states. It is surfaced so that fact is visible rather than
+    discovered the hard way. What must never happen, regardless of this
+    count, is `candidates()` returning one state's rules under another
+    state's name -- guaranteed structurally because `_by_state_district_code`
+    keys on `(state_key, district_key, code)`, not `district_key` alone."""
     by_code: dict[str, int] = field(default_factory=dict)
     by_review_status: dict[str, int] = field(default_factory=dict)
 
@@ -111,7 +138,8 @@ class CoverageReport:
         return [
             f"documents          {self.documents}",
             f"rules              {self.rules}",
-            f"districts          {self.districts}",
+            f"districts          {self.districts} "
+            f"({self.district_name_collisions} name(s) shared across states)",
             f"condition mapped   {self.rules - self.unmapped_rules} "
             f"({100 * self.mapped_fraction:.1f}%)",
             f"unmapped           {self.unmapped_rules}",
@@ -127,7 +155,7 @@ class CoverageReport:
 class RuleStore:
     """An in-memory, read-only index over an ingested DACP corpus."""
 
-    _by_district_code: dict[tuple[str, ConditionCode], list[DACPRule]] = field(
+    _by_state_district_code: dict[tuple[str, str, ConditionCode], list[DACPRule]] = field(
         default_factory=lambda: defaultdict(list)
     )
     _documents: dict[str, DocumentRef] = field(default_factory=dict)
@@ -139,6 +167,7 @@ class RuleStore:
         root: Path | str = DEFAULT_PROCESSED_ROOT,
         *,
         districts: set[str] | None = None,
+        states: set[str] | None = None,
     ) -> RuleStore:
         """Load every `*.json` written by `scripts/ingest_all_dacp.py`.
 
@@ -147,6 +176,13 @@ class RuleStore:
             districts: Optional whitelist of district names (folded through
                 `district_key`). Loading one district's rules is enough for a
                 single-district run and skips ~640 files of parsing.
+            states: Optional whitelist of state names (folded through
+                `state_key`), ANDed with `districts` when both are given. Pass
+                this whenever the district name alone could be ambiguous --
+                which, on the real corpus, it can be (Bijapur, Balrampur,
+                Pratapgarh, Raigarh each name a district in two different
+                states). Omitting it is only safe when the caller has already
+                confirmed the district name is unique in the loaded corpus.
 
         Returns:
             A populated store. A file that fails to parse is logged and skipped
@@ -155,7 +191,8 @@ class RuleStore:
             helps nobody.
         """
         store = cls()
-        wanted = {district_key(name) for name in districts} if districts else None
+        wanted_districts = {district_key(name) for name in districts} if districts else None
+        wanted_states = {state_key(name) for name in states} if states else None
         seen_source: dict[str, Path] = {}
 
         # Newest first, so that when the same source PDF appears twice the later
@@ -178,8 +215,11 @@ class RuleStore:
                     )
                     continue
                 seen_source[source] = path
-                key = district_key(document["district"])
-                if wanted is not None and key not in wanted:
+                dkey = district_key(document["district"])
+                skey = state_key(document["state"])
+                if wanted_districts is not None and dkey not in wanted_districts:
+                    continue
+                if wanted_states is not None and skey not in wanted_states:
                     continue
                 store._documents[document["id"]] = DocumentRef(
                     document_id=document["id"],
@@ -189,7 +229,7 @@ class RuleStore:
                     page_count=int(document["page_count"]),
                 )
                 for raw in payload["rules"]:
-                    store._add(DACPRule.model_validate(raw), key)
+                    store._add(DACPRule.model_validate(raw), skey, dkey)
             except Exception:
                 logger.warning("skipping unreadable processed file %s", path, exc_info=True)
 
@@ -198,28 +238,32 @@ class RuleStore:
         )
         return store
 
-    def _add(self, rule: DACPRule, key: str) -> None:
+    def _add(self, rule: DACPRule, state_key_val: str, district_key_val: str) -> None:
         self._all_rules.append(rule)
         code = rule.fields.condition_code
         if code is not None and code in EMITTABLE_CONDITION_CODES:
-            self._by_district_code[(key, code)].append(rule)
+            self._by_state_district_code[(state_key_val, district_key_val, code)].append(rule)
 
-    def candidates(self, district: str, code: ConditionCode) -> list[DACPRule]:
-        """Rules for one district that claim to answer one condition code.
+    def candidates(self, state: str, district: str, code: ConditionCode) -> list[DACPRule]:
+        """Rules for one district, in one state, that claim to answer one condition code.
 
-        Returns `[]` for `UNMAPPED`, and for any district/code pair the corpus
-        does not cover. Empty is a normal answer: `can_emit_advisory` turns it
-        into "no matching approved rule" and the engine abstains, which is the
-        correct behaviour when the plan is silent.
+        Returns `[]` for `UNMAPPED`, and for any state/district/code triple the
+        corpus does not cover. Empty is a normal answer: `can_emit_advisory`
+        turns it into "no matching approved rule" and the engine abstains,
+        which is the correct behaviour when the plan is silent.
 
         Note what this does *not* do: it does not fall back to a neighbouring
-        district, a parent state, or a "closest" condition. Retrieving a
-        different district's contingency plan would be inventing advice, which is
-        the one thing the product exists not to do.
+        district, a different state's same-named district, or a "closest"
+        condition. Retrieving a different district's contingency plan would be
+        inventing advice, which is the one thing the product exists not to do
+        -- and `state` is required precisely so that guarantee is real: a
+        district-only lookup silently merges e.g. Bijapur, Karnataka with
+        Bijapur, Chhattisgarh.
         """
         if code not in EMITTABLE_CONDITION_CODES:
             return []
-        return list(self._by_district_code.get((district_key(district), code), ()))
+        key = (state_key(state), district_key(district), code)
+        return list(self._by_state_district_code.get(key, ()))
 
     def page_count_for(self, rule: DACPRule) -> int | None:
         """The source document's page count, for the citation bound.
@@ -245,6 +289,24 @@ class RuleStore:
         """District names present in the corpus, as the documents spell them."""
         return sorted({reference.district for reference in self._documents.values()})
 
+    def states_for_district(self, district: str) -> list[str]:
+        """States (as spelled by their documents) that publish a plan for this district name.
+
+        Empty means the district is not in the corpus. More than one entry
+        means the name is ambiguous and a caller must supply `state` before
+        calling `candidates()` -- this is what lets a CLI resolve `--state`
+        automatically when the answer is unambiguous, and demand it loudly
+        when it is not.
+        """
+        wanted = district_key(district)
+        return sorted(
+            {
+                reference.state
+                for reference in self._documents.values()
+                if district_key(reference.district) == wanted
+            }
+        )
+
     def coverage(self) -> CoverageReport:
         """Measure the corpus. See `CoverageReport` for why the bad numbers are in it."""
         by_code = Counter(
@@ -252,6 +314,10 @@ class RuleStore:
             for rule in self._all_rules
         )
         by_status = Counter(rule.review_status.value for rule in self._all_rules)
+        district_states: dict[str, set[str]] = defaultdict(set)
+        for reference in self._documents.values():
+            district_states[district_key(reference.district)].add(state_key(reference.state))
+        collisions = sum(1 for states in district_states.values() if len(states) > 1)
         return CoverageReport(
             documents=len(self._documents),
             rules=len(self._all_rules),
@@ -259,7 +325,8 @@ class RuleStore:
                 1 for rule in self._all_rules if rule.review_status == ReviewStatus.APPROVED
             ),
             unmapped_rules=by_code.get(ConditionCode.UNMAPPED.value, 0),
-            districts=len({district_key(d.district) for d in self._documents.values()}),
+            districts=len(district_states),
+            district_name_collisions=collisions,
             by_code=dict(by_code),
             by_review_status=dict(by_status),
         )

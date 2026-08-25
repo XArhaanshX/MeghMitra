@@ -4,10 +4,10 @@ from uuid import UUID
 
 from ankur_domain.services import ReviewService, RuleNotApprovableError, RuleNotFoundError
 from ankur_schemas.rule import DACPRule
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from app.deps import get_review_service
+from app.deps import get_review_service, paginated
 
 router = APIRouter(tags=["review"])
 
@@ -22,8 +22,15 @@ class RejectRequest(BaseModel):
 
 
 @router.get("/review-queue")
-async def review_queue(service: ReviewService = Depends(get_review_service)) -> list[DACPRule]:
-    return await service.review_queue()
+async def review_queue(
+    state: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=200),
+    offset: int | None = Query(default=None, ge=0),
+    service: ReviewService = Depends(get_review_service),
+) -> list[DACPRule] | dict[str, object]:
+    return await paginated(
+        lambda **kw: service.review_queue(state=state, **kw), limit=limit, offset=offset
+    )
 
 
 @router.post("/rules/{rule_id}/approve")

@@ -15,6 +15,16 @@ first -- they're the primary documentation; this file is orientation + known lim
 | `pipeline.py` | orchestrates the above | `run_ingestion()` is the single entry point; wraps the run in an `ExtractionRun` record. |
 | `ingest.py` | CLI | `python -m document_intelligence.ingest <pdf> --district <d> --state <s>` |
 
+## State resolution
+
+`naming.py` recovers a district name from a DACP filename stem and strips any leading state
+token (name, abbreviation, or serial) first, via `ankur_geo.alias.state_by_name_or_alias` --
+the same alias table (7 legacy spellings: `Arunchal_Pradesh`, `Chattisgarh`, `Maharastra`,
+`Orissa`, `Uttarkhand`, `Jammu___Kashmir`, `Andaman___Nicobar_Islands`) every other layer uses,
+so a state spelling that resolves during ingestion resolves identically at lookup time. This is
+what lets `ankur_geo.districts.build_district_index` derive one `District` per distinct
+`(state, district)` pair straight from `data/processed/` rather than from a hand-authored list.
+
 ## Extraction is deliberately conservative
 
 `extractor.py` only produces a candidate rule from a `TABLE_ROW` chunk when:

@@ -403,14 +403,41 @@ Effective positives ≈ **40 seasons × ~3 ≈ 120**.
 Consequences, as design decisions rather than surprises:
 
 1. **Train wide, demo narrow.** Pool across Haryana and comparable agro-climatic zones; demo on
-   Sirsa. Include block-static covariates so a pooled model can specialise.
+   Sirsa. Include block-static covariates so a pooled model can specialise. **The code now
+   supports this** (`services/trigger-engine/src/trigger_engine/models.py`,
+   `ClimatologyBaseline(region_of_block=...)`): the B0 baseline's phase-rate binning is estimated
+   per region (e.g. district) rather than pooled nationally, because dry-spell climatology
+   genuinely differs by region and a national pool would make the reference forecast -- and every
+   downstream BSS -- quietly wrong for a multi-region panel. `region_of_block=None` (the default)
+   still reproduces today's single-region behaviour exactly, so this is additive, not a change to
+   the Sirsa-only demo path.
 2. **Keep the model small,** with monotonic constraints (p must rise with ensemble dry-fraction
    and with cumulative deficit). Cheap regularisation *and* defensible to an agronomist.
 3. **Never report a bare point estimate.** Block-bootstrap 95% CI on BSS, always.
 4. **Report effective sample size explicitly.** A judge who asks and gets a straight answer
-   trusts the rest.
+   trusts the rest. `labels.effective_sample_size(..., region_of_block=...)` now divides out
+   spatial correlation *within* each region separately and sums across regions, instead of
+   treating a multi-region panel as one spatially-correlated cluster -- Sirsa's rain says nothing
+   about Chennai's, so pooling them would understate the true effective sample size.
 5. **The 2025 hold-out is one sample.** Use it as *narrative* in the demo; use
    leave-one-season-out CV as *evidence* in the metrics table.
+
+**Season and condition-threshold parameterisation has also landed** (`packages/geo`): the
+hardcoded JJAS season bounds and the five Sirsa-derived condition-detection numbers
+(`DELAYED_ONSET_DAYS` and friends) that used to live in `trigger_engine.config` are now
+`ankur_geo.SeasonWindow`/`ankur_geo.ConditionThresholds` parameters that
+`preprocess.in_monsoon_window`, `features.build_features`, and every predicate in
+`trigger_engine.conditions` accept, each defaulting to the exact Haryana/JJAS numbers they
+replace (`DEFAULT_SEASON_WINDOW`, `DEFAULT_CONDITION_THRESHOLDS`). A region whose principal rains
+fall outside JJAS -- Tamil Nadu's October–December northeast monsoon, say -- no longer gets
+silently filtered to nothing; it needs its own `SeasonWindow`, which this package does not yet
+ship a calibrated one for (see `packages/geo/src/ankur_geo/season.py` -- only JJAS and one
+demo/test northeast-monsoon shape exist so far, not a national IMD onset/withdrawal-normals
+table). Per-block latitude for the water balance is a related, still-open gap: `latitude_deg` is
+now `float | pd.Series | None` end to end (`waterbalance.run_water_balance`,
+`pipeline.prepare_panel`, `endtoend.run_district`), but `None` still falls back to Sirsa's 29.5°N
+with a logged warning -- there is no verified per-block latitude source in this repo yet, and
+drift grows with distance from Haryana until a real GIS join lands.
 
 ### Data risk that gates everything: reforecasts
 
@@ -500,7 +527,14 @@ as CI. Write them early.
 5. **Dry-spell length** — train on 5-day (more events, better calibration) and map up to the
    15–20 day DACP condition, or train directly on 15–20 day (matches the rule, ~10× rarer)?
    Recommendation: both, report both base rates.
-6. **Region to widen training to** beyond Haryana?
+6. **Region to widen training to** beyond Haryana? Partially answered by the code, not fully by
+   data: the corpus is now national (646 documents, 30 states/UTs) and `RuleStore`/`SeasonWindow`/
+   `ConditionThresholds`/`ClimatologyBaseline(region_of_block=...)` all support a multi-region
+   panel mechanically. What's still open is which regions actually have enough approved,
+   `condition_code`-mapped rules and a defensible `SeasonWindow` to pool into training -- that is
+   a data-coverage and calibration question this doc's mechanism can't answer for itself, and it
+   still gates on Q1 (reforecast access) and Q2 (condition coverage) per region, not just for
+   Sirsa.
 7. **Does `condition_code` belong in `DACPRuleFields` or in a separate join table?** Putting it
    in `fields` (JSONB) needs no migration and follows `docs/domain-model.md`'s extension rule,
    but a re-normalization pass then rewrites rule rows. A side table keeps extracted rules

@@ -8,7 +8,7 @@ from ankur_schemas.enums import ReviewStatus
 from ankur_schemas.rule import DACPRule
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.deps import get_rule_service
+from app.deps import get_rule_service, paginated
 
 router = APIRouter(tags=["rules"])
 
@@ -17,12 +17,21 @@ router = APIRouter(tags=["rules"])
 async def list_rules(
     review_status: ReviewStatus | None = Query(default=None),
     district: str | None = Query(default=None),
+    state: str | None = Query(default=None),
     advisory_eligible: bool = Query(default=False),
+    limit: int | None = Query(default=None, ge=1, le=200),
+    offset: int | None = Query(default=None, ge=0),
     service: RuleService = Depends(get_rule_service),
-) -> list[DACPRule]:
+) -> list[DACPRule] | dict[str, object]:
     if advisory_eligible:
-        return await service.list_advisory_eligible(district=district)
-    return await service.list(review_status=review_status, district=district)
+        fetch = lambda **kw: service.list_advisory_eligible(  # noqa: E731
+            district=district, state=state, **kw
+        )
+    else:
+        fetch = lambda **kw: service.list(  # noqa: E731
+            review_status=review_status, district=district, state=state, **kw
+        )
+    return await paginated(fetch, limit=limit, offset=offset)
 
 
 @router.get("/rules/{rule_id}")

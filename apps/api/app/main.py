@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.db import create_pool
-from app.routes import advisories, documents, health, review, rules
+from app.routes import advisories, documents, geo, health, review, rules
 
 logger = logging.getLogger("ankur.api")
 
@@ -58,6 +58,7 @@ app.include_router(documents.router)
 app.include_router(rules.router)
 app.include_router(review.router)
 app.include_router(advisories.router)
+app.include_router(geo.router)
 
 _settings = get_settings()
 app.add_middleware(

@@ -42,6 +42,7 @@ describe('ApproveDialog', () => {
       id: 'rule-1',
       document_id: null,
       fields: {
+        state: 'Haryana',
         district: 'Sirsa',
         block: null,
         farming_situation: null,

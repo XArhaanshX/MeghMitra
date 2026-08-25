@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "ankur-schemas",
     "ankur-domain",
+    "ankur-geo",
     "pypdf>=5.1",
 ]
 
@@ -18,6 +19,7 @@ ocr = [
 [tool.uv.sources]
 ankur-schemas = { workspace = true }
 ankur-domain = { workspace = true }
+ankur-geo = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

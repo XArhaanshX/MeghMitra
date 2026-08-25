@@ -188,13 +188,14 @@ def _rain_3d(panel: pd.DataFrame) -> pd.Series:
 
 
 def run_district(
+    state: str,
     district: str,
     store: RuleStore,
     observations: pd.DataFrame,
     *,
     lead_days: int = 14,
     cost_loss_ratio: float = 0.20,
-    latitude_deg: float = 29.5,
+    latitude_deg: float | pd.Series | None = None,
     sowing_date: date | None = None,
     onset_delay_days: int | None = None,
     approve_for_demo: bool = False,
@@ -202,6 +203,11 @@ def run_district(
     """Run the full path for one district and return every decision it made.
 
     Args:
+        state: State the district's plan belongs to. Required, not inferred --
+            `district` alone is ambiguous on the real corpus (Bijapur, Balrampur,
+            Pratapgarh and Raigarh each name a district in two different states),
+            and passing the wrong one would retrieve a different state's
+            contingency plan under this district's name.
         district: District to look rules up under.
         store: The ingested rule base.
         observations: Long-format weather (`date`, `block`, `rain_mm`, `tmin_c`,
@@ -210,6 +216,9 @@ def run_district(
         cost_loss_ratio: The BAO's cost of acting divided by the loss avoided.
             Sets the decision threshold, since the optimal one is p* = alpha.
         latitude_deg: For extraterrestrial radiation in the water balance.
+            Forwarded to `pipeline.prepare_panel` -- see
+            `waterbalance.run_water_balance` for the fallback-with-warning
+            behaviour when it is `None` (the default).
         sowing_date: The sowing anchor. **Never inferred** -- passing None leaves
             `days_since_sowing` at None, which makes `is_dry_spell_after_sowing`
             return False, so the flagship condition simply cannot fire without a
@@ -258,7 +267,7 @@ def run_district(
 
     candidates_by_code: dict[ConditionCode, list[DACPRule]] = {}
     for code in ConditionCode:
-        found = store.candidates(district, code)
+        found = store.candidates(state, district, code)
         if approve_for_demo:
             found = simulate_reviewer_approval(found, store)
         candidates_by_code[code] = found

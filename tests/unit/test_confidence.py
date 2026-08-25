@@ -19,15 +19,18 @@ from document_intelligence.confidence import score_draft
 
 
 def test_header_context_increases_score():
-    fields = DACPRuleFields(district="Sirsa", condition="dry spell", crop="Pearl millet")
+    fields = DACPRuleFields(
+        state="Haryana", district="Sirsa", condition="dry spell", crop="Pearl millet"
+    )
     with_header, _ = score_draft(fields, had_header_context=True)
     without_header, _ = score_draft(fields, had_header_context=False)
     assert with_header > without_header
 
 
 def test_more_populated_optional_fields_increase_score():
-    sparse = DACPRuleFields(district="Sirsa", condition="dry spell after sowing")
+    sparse = DACPRuleFields(state="Haryana", district="Sirsa", condition="dry spell after sowing")
     rich = DACPRuleFields(
+        state="Haryana",
         district="Sirsa",
         condition="dry spell after sowing",
         crop="Pearl millet",
@@ -41,13 +44,14 @@ def test_more_populated_optional_fields_increase_score():
 
 
 def test_short_condition_is_penalized():
-    fields = DACPRuleFields(district="Sirsa", condition="dry")
+    fields = DACPRuleFields(state="Haryana", district="Sirsa", condition="dry")
     score, notes = score_draft(fields, had_header_context=True)
     assert any("short" in n for n in notes)
 
 
 def test_score_bounded_zero_to_one():
     fields = DACPRuleFields(
+        state="Haryana",
         district="Sirsa",
         condition="long enough condition text",
         crop="A",
@@ -64,7 +68,7 @@ def test_score_bounded_zero_to_one():
 
 
 def test_low_confidence_draft_requires_review():
-    fields = DACPRuleFields(district="Sirsa", condition="dry spell after sowing")
+    fields = DACPRuleFields(state="Haryana", district="Sirsa", condition="dry spell after sowing")
     draft = DACPRuleDraft(
         fields=fields,
         citation=Citation(document="plan.pdf", page=1),
@@ -84,7 +88,7 @@ def test_low_confidence_rule_is_not_advisory_eligible_even_if_marked_approved():
     use -- confidence alone never re-enters that decision once approved, by
     design. This test documents that approval, not confidence, is the gate.
     """
-    fields = DACPRuleFields(district="Sirsa", condition="dry spell after sowing")
+    fields = DACPRuleFields(state="Haryana", district="Sirsa", condition="dry spell after sowing")
     rule = DACPRule(
         fields=fields,
         citation=Citation(document="plan.pdf", page=1),

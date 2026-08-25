@@ -8,6 +8,7 @@
   "rules": [
     {
       "fields": {
+        "state": "Haryana",
         "district": "Sirsa",
         "block": null,
         "farming_situation": null,
@@ -35,6 +36,7 @@
     },
     {
       "fields": {
+        "state": "Haryana",
         "district": "Sirsa",
         "block": null,
         "farming_situation": "Rainfed, light textured soils",
@@ -61,6 +63,7 @@
     },
     {
       "fields": {
+        "state": "Haryana",
         "district": "Sirsa",
         "block": null,
         "farming_situation": null,
@@ -90,6 +93,7 @@
     },
     {
       "fields": {
+        "state": "Haryana",
         "district": "Sirsa",
         "block": null,
         "farming_situation": null,

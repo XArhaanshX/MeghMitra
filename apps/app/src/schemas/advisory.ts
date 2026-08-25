@@ -31,8 +31,12 @@ export const forecastInputSchema = z.object({
 });
 export type ForecastInput = z.infer<typeof forecastInputSchema>;
 
+// `state` is optional -- required only when `district`'s name is ingested for
+// more than one state (mirrors the backend's `_resolve_state`: an ambiguous
+// district without `state` returns 422 rather than guessing).
 export const evaluateRequestSchema = z.object({
   district: z.string(),
+  state: z.string().optional(),
   crop_already_sown: z.boolean(),
   cost_loss_ratio: z.number().gt(0).lt(1).optional(),
   moisture: moistureInputSchema,

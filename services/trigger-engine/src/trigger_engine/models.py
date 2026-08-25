@@ -42,6 +42,7 @@ seconds, not minutes. No GPU, and no `fit` that outlasts the coffee.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Final, Protocol, runtime_checkable
 
 import numpy as np
@@ -103,16 +104,31 @@ class ClimatologyBaseline:
     Phase is recovered from the `day_of_season_sin`/`cos` features rather than
     passed separately, so this baseline consumes exactly the same matrix as every
     other model on the ladder.
+
+    `region_of_block`, when given, adds a region dimension to the binning: the
+    reference rate for a block is estimated from its own region's history, not
+    pooled nationally. Dry-spell climatology genuinely differs by region -- a
+    Rajasthan block and a Kerala block do not share a base rate -- and pooling
+    them would make the reference forecast, and therefore every downstream BSS,
+    quietly wrong for a multi-region panel. `None` (the default) pools every
+    block into one region, reproducing today's behaviour exactly.
     """
 
     name = "B0_climatology"
 
-    def __init__(self, n_bins: int = 12) -> None:
+    def __init__(
+        self,
+        n_bins: int = 12,
+        *,
+        region_of_block: Mapping[str, str] | None = None,
+    ) -> None:
         # ~10-day bins across a 122-day season: fine enough to track the seasonal
         # cycle, coarse enough that each bin pools enough seasons to estimate a
         # rate rather than reproduce one season's noise.
         self.n_bins = n_bins
+        self.region_of_block = region_of_block
         self._rates: np.ndarray | None = None
+        self._region_rates: dict[str, np.ndarray] | None = None
         self._overall: float = 0.0
 
     @staticmethod
@@ -122,23 +138,75 @@ class ClimatologyBaseline:
         normalized = (angle % (2 * np.pi)) / (2 * np.pi)
         return np.minimum((normalized * n_bins).astype(int), n_bins - 1)
 
-    def fit(self, features: pd.DataFrame, labels: np.ndarray) -> ClimatologyBaseline:
-        bins = self._phase_bin(features, self.n_bins)
-        self._overall = float(labels.mean()) if len(labels) else 0.0
-        rates = np.full(self.n_bins, self._overall, dtype=float)
-        for b in range(self.n_bins):
+    @staticmethod
+    def _fit_bin_rates(
+        bins: np.ndarray, labels: np.ndarray, n_bins: int, overall: float
+    ) -> np.ndarray:
+        """Per-bin rate, falling back to `overall` for a thinly-populated bin."""
+        rates = np.full(n_bins, overall, dtype=float)
+        for b in range(n_bins):
             mask = bins == b
             # Require a few observations before trusting a bin-specific rate;
             # otherwise fall back to the pooled rate rather than to noise.
             if mask.sum() >= 10:
                 rates[b] = labels[mask].mean()
-        self._rates = rates
+        return rates
+
+    def _regions_for(self, blocks: pd.Series) -> np.ndarray:
+        assert self.region_of_block is not None
+        return np.array([self.region_of_block.get(b, b) for b in blocks.to_numpy()])
+
+    def fit(
+        self,
+        features: pd.DataFrame,
+        labels: np.ndarray,
+        *,
+        blocks: pd.Series | None = None,
+    ) -> ClimatologyBaseline:
+        bins = self._phase_bin(features, self.n_bins)
+        self._overall = float(labels.mean()) if len(labels) else 0.0
+        self._rates = self._fit_bin_rates(bins, labels, self.n_bins, self._overall)
+
+        if self.region_of_block is None:
+            self._region_rates = None
+        else:
+            if blocks is None:
+                raise ValueError(
+                    "ClimatologyBaseline(region_of_block=...) requires blocks= at fit time"
+                )
+            regions = self._regions_for(blocks)
+            self._region_rates = {
+                region: self._fit_bin_rates(
+                    bins[regions == region], labels[regions == region], self.n_bins, self._overall
+                )
+                for region in np.unique(regions)
+            }
         return self
 
-    def predict_proba(self, features: pd.DataFrame) -> np.ndarray:
+    def predict_proba(
+        self,
+        features: pd.DataFrame,
+        *,
+        blocks: pd.Series | None = None,
+    ) -> np.ndarray:
         if self._rates is None:
             raise RuntimeError("ClimatologyBaseline.predict_proba called before fit")
-        return _clip(self._rates[self._phase_bin(features, self.n_bins)])
+        bins = self._phase_bin(features, self.n_bins)
+        if self._region_rates is None:
+            return _clip(self._rates[bins])
+        if blocks is None:
+            raise ValueError(
+                "ClimatologyBaseline was fit with region_of_block=...; predict_proba needs "
+                "blocks= too"
+            )
+        regions = self._regions_for(blocks)
+        out = np.array(
+            [
+                self._region_rates.get(region, self._rates)[b]
+                for region, b in zip(regions, bins, strict=True)
+            ]
+        )
+        return _clip(out)
 
 
 # ---------------------------------------------------------------------------

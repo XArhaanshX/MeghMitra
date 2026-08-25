@@ -1,7 +1,7 @@
 
 # Ankur — Complete Architecture Guide
 
-SIH 2026 · SIH26086 · Ministry of Earth Sciences · Prototype scope: Haryana → Sirsa
+SIH 2026 · SIH26086 · Ministry of Earth Sciences · Corpus: India-wide (646 documents, 30 states/UTs) · Flagship demo scope: Haryana → Sirsa
 
 This document explains the whole system, starting from plain English and going down to
 each stack in detail. Read Part 1 even if you only care about one layer — the rest only
@@ -158,6 +158,13 @@ expression of the product rule.
        └─────────────────────────────┘
 
        ┌─────────────────────────────┐
+       │ packages/geo                │  state/district identity, resolve_region(),
+       │   ankur_geo                 │  season + condition-threshold params — leaf,
+       │                             │  no internal imports (used today by
+       │                             │  document-intelligence's state resolution)
+       └─────────────────────────────┘
+
+       ┌─────────────────────────────┐
        │ Postgres 16 + PostGIS       │
        └─────────────────────────────┘
 ```
@@ -168,6 +175,7 @@ expression of the product rule.
 schemas ◄── domain ◄── document-intelligence ──┐
                    ◄── trigger-engine ─────────┼──► apps/api ──► apps/app
                                                ┘
+geo (leaf, no internal deps) ◄── document-intelligence   (state resolution during ingestion)
 ```
 
 `packages/` never imports `apps/` or `services/`. `apps/api` is the only place allowed to
@@ -190,7 +198,9 @@ ankur/
 │
 ├── packages/
 │   ├── schemas/          ankur_schemas — Pydantic shapes
-│   └── domain/           ankur_domain — invariants + ports + services
+│   ├── domain/           ankur_domain — invariants + ports + services
+│   └── geo/              ankur_geo — state/district identity, resolve_region(),
+│                           season/threshold params (India-wide, corpus-derived)
 │
 ├── services/
 │   ├── document-intelligence/   PDF → structured rules
@@ -282,6 +292,7 @@ filter it afterwards.
 ```json
 {
   "fields": {
+    "state": "Haryana",
     "district": "Sirsa",
     "block": null,
     "farming_situation": null,
@@ -305,7 +316,8 @@ filter it afterwards.
 }
 ```
 
-Every field except `district` and `condition` is nullable. **Nullable over guessed, always.**
+Every field except `state`, `district`, and `condition` is nullable. **Nullable over guessed,
+always.**
 
 ### `condition` vs `condition_code` — the join contract
 

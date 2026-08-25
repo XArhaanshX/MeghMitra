@@ -18,6 +18,14 @@ non-obvious operational knowledge for changing the pipeline itself.
   short but legitimate native-text pages (e.g. a mostly-blank cover page), don't lower this
   threshold globally to fix it -- that's a per-document edge case, not a pipeline bug.
 
+## State resolution is not this pipeline's job to reinvent
+
+`naming.py` recovers a district name from a filename and strips the state prefix via
+`ankur_geo.alias.state_by_name_or_alias` -- the corpus is national now (646 documents, 30
+states/UTs) and district names are not globally unique (e.g. Bijapur exists in both Karnataka
+and Chhattisgarh). Do not add a second state-spelling table here; extend
+`ankur_geo.alias.STATE_NAME_ALIASES` if a new document's directory name doesn't resolve.
+
 ## Before touching `extractor.py`
 
 - `_HEADER_KEYWORDS` is intentionally flat and literal (no fuzzy matching, no LLM). Extend it by

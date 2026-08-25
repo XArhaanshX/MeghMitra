@@ -16,6 +16,7 @@ from document_intelligence.validator import validate_draft
 
 def _draft(**field_overrides) -> DACPRuleDraft:
     fields = DACPRuleFields(
+        state="Haryana",
         district="Sirsa",
         condition="15-20 day dry spell after sowing",
         crop="Pearl millet",
@@ -62,7 +63,7 @@ def test_low_confidence_forces_needs_review():
 
 
 def test_missing_district_forces_needs_review():
-    fields = DACPRuleFields(district="   ", condition="some condition")
+    fields = DACPRuleFields(state="Haryana", district="   ", condition="some condition")
     draft = DACPRuleDraft(
         fields=fields,
         citation=Citation(document="HAR16-Sirsa-30-06-2011.pdf", page=1),

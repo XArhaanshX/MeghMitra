@@ -121,10 +121,17 @@ _UNSEASONAL_RAIN: Final[tuple[str, ...]] = (
     r"flood",
     r"water ?logging",
     r"hail ?storm",
+    r"cyclone",
+    r"cyclonic",
 )
 """Rain where rain is the damage. `flood` and `waterlogging` are included
 because the template's "2.2 Unusual rains" section words the same condition both
-ways."""
+ways. `hailstorm` and `cyclone` are included on purpose, not as an oversight
+fixed later: both cause crop damage a DACP tables as a rainfall-excess row, and
+excess rainfall is the one signal `trigger_engine.conditions.is_unseasonal_rain`
+can actually test from `MoistureState`. Frost, cold wave and heat wave are
+deliberately NOT here -- see `ConditionCode.UNSEASONAL_RAIN`'s docstring for
+why folding them in would be fabricating a detector rather than measuring one."""
 
 _MID_SEASON_DRY_SPELL: Final[tuple[str, ...]] = (
     r"mid ?season",

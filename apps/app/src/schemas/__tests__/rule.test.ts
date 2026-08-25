@@ -34,8 +34,9 @@ describe('conditionCodeSchema', () => {
 });
 
 describe('dacpRuleFieldsSchema', () => {
-  it('accepts null for every field except district and condition', () => {
+  it('accepts null for every field except state, district and condition', () => {
     const result = dacpRuleFieldsSchema.safeParse({
+      state: 'Haryana',
       district: 'Sirsa',
       block: null,
       farming_situation: null,
@@ -52,7 +53,7 @@ describe('dacpRuleFieldsSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('requires district and condition to be present', () => {
+  it('requires state, district and condition to be present', () => {
     const result = dacpRuleFieldsSchema.safeParse({ condition_code: null });
     expect(result.success).toBe(false);
   });
@@ -64,6 +65,7 @@ describe('dacpRuleSchema', () => {
       id: '550e8400-e29b-41d4-a716-446655440000',
       document_id: null,
       fields: {
+        state: 'Haryana',
         district: 'Sirsa',
         block: null,
         farming_situation: null,

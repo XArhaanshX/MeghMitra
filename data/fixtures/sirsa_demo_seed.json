@@ -1,5 +1,5 @@
 {
-  "_comment": "Hand-curated Sirsa demo rules citing pages that exist in HAR16-Sirsa-30-06-2011.pdf (31 pages). Loaded as drafts, validated, then approved via ReviewService — never inserted as approved. Do not confuse with sirsa_dacp.json, whose citations (pp. 37–44) are out of range and are kept only as invariant fixtures.",
+  "_comment": "Hand-curated Sirsa demo rules citing pages that exist in HAR16-Sirsa-30-06-2011.pdf (31 pages). Loaded as drafts, validated, then approved via ReviewService \u2014 never inserted as approved. Do not confuse with sirsa_dacp.json, whose citations (pp. 37\u201344) are out of range and are kept only as invariant fixtures.",
   "document": {
     "filename": "HAR16-Sirsa-30-06-2011.pdf",
     "district": "Sirsa",
@@ -9,6 +9,7 @@
   "drafts": [
     {
       "fields": {
+        "state": "Haryana",
         "district": "Sirsa",
         "block": null,
         "farming_situation": "Light textured sandy soils susceptible to wind erosion",
@@ -31,13 +32,14 @@
     },
     {
       "fields": {
+        "state": "Haryana",
         "district": "Sirsa",
         "block": null,
         "farming_situation": "Light textured sandy soils susceptible to wind erosion",
         "crop": "Pearl millet",
         "soil": null,
         "crop_stage": "Before sowing",
-        "condition": "Early season drought (delayed onset) — delay by 4 weeks (August 1st week)",
+        "condition": "Early season drought (delayed onset) \u2014 delay by 4 weeks (August 1st week)",
         "condition_code": "delayed_onset",
         "action": "Don't grow clusterbean beyond mid-August; keep listed pearl millet / intercrop options.",
         "variety": "HHB-67 (Improved)",
@@ -53,13 +55,14 @@
     },
     {
       "fields": {
+        "state": "Haryana",
         "district": "Sirsa",
         "block": null,
         "farming_situation": "Light textured sandy soils susceptible to wind erosion",
         "crop": "Pearl millet",
         "soil": null,
         "crop_stage": "Vegetative",
-        "condition": "Early season drought (normal onset) — rainless period at vegetative stage",
+        "condition": "Early season drought (normal onset) \u2014 rainless period at vegetative stage",
         "condition_code": "mid_season_dry_spell",
         "action": "Weeding and hoeing; thinning to reduce 1/3 population; life-saving irrigation of 4-5 cm if possible.",
         "variety": "HHB-67 (Improved)",

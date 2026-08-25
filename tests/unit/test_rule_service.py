@@ -16,6 +16,7 @@ from ankur_schemas.rule import DACPRule, DACPRuleFields
 
 def _rule(
     *,
+    state: str = "Haryana",
     district: str = "Sirsa",
     status: ReviewStatus = ReviewStatus.APPROVED,
     page: int = 7,
@@ -24,6 +25,7 @@ def _rule(
 ) -> DACPRule:
     return DACPRule(
         fields=DACPRuleFields(
+            state=state,
             district=district,
             condition="Normal onset followed by 15-20 day dry spell after sowing",
             condition_code=code,

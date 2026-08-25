@@ -40,14 +40,13 @@ from typing import Final
 
 import numpy as np
 import pandas as pd
+from ankur_geo import DEFAULT_SEASON_WINDOW, SeasonWindow
 
 from trigger_engine.config import (
     COL_BLOCK,
     COL_DATE,
     COL_ENS_DRY_FRACTION,
     COL_RAIN,
-    MONSOON_START_DAY,
-    MONSOON_START_MONTH,
     RAINY_DAY_THRESHOLD_MM,
 )
 
@@ -61,8 +60,10 @@ ROLLING_WINDOWS: Final[tuple[int, ...]] = (3, 7, 15, 30)
 """Accumulation windows. 7 and 15 straddle the dry-spell lengths the DACP uses;
 30 is roughly the MISO period."""
 
-SEASON_LENGTH_DAYS: Final[int] = 122
-"""June 1 - September 30. The only Fourier period that means anything here."""
+# SEASON_LENGTH_DAYS used to be hardcoded here as 122 (June 1 - September 30).
+# `build_features` now derives it from `season.length_days`, so a non-JJAS
+# `SeasonWindow` gets a correct Fourier-phase anchor instead of silently
+# reusing Haryana's.
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,6 +240,7 @@ def build_features(
     *,
     training_seasons: set[int],
     teleconnections: pd.DataFrame | None = None,
+    season: SeasonWindow = DEFAULT_SEASON_WINDOW,
 ) -> pd.DataFrame:
     """Assemble the causal feature matrix.
 
@@ -251,6 +253,10 @@ def build_features(
             Absent, those columns are 0.0 (a neutral standardized index) so the
             pipeline runs end-to-end without them and the model simply finds no
             signal there.
+        season: Anchors the Fourier seasonal-phase feature. Defaults to JJAS
+            (`ankur_geo.DEFAULT_SEASON_WINDOW`), reproducing today's behaviour;
+            must match whatever `season` `preprocess.in_monsoon_window` filtered
+            `frame` to, or the phase anchor and the data disagree.
 
     Returns:
         A frame whose columns are exactly `FEATURE_NAMES`, indexed like `frame`.
@@ -295,12 +301,12 @@ def build_features(
     season_start = pd.to_datetime(
         {
             "year": frame[COL_DATE].dt.year,
-            "month": MONSOON_START_MONTH,
-            "day": MONSOON_START_DAY,
+            "month": season.start_month,
+            "day": season.start_day,
         }
     )
     day_of_season = (frame[COL_DATE] - season_start).dt.days
-    phase = 2.0 * np.pi * day_of_season / SEASON_LENGTH_DAYS
+    phase = 2.0 * np.pi * day_of_season / season.length_days
     out["day_of_season_sin"] = np.sin(phase)
     out["day_of_season_cos"] = np.cos(phase)
 

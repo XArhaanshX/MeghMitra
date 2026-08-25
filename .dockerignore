@@ -11,7 +11,6 @@
 .venv
 apps/app
 data/processed
-data/fixtures
 docs
 tests
 *.md

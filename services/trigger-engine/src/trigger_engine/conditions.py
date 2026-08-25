@@ -39,21 +39,21 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Final
 
+from ankur_geo import DEFAULT_CONDITION_THRESHOLDS, ConditionThresholds
 from ankur_schemas.condition import ConditionCode, MoistureState
 
 from trigger_engine.config import (
-    DELAYED_ONSET_DAYS,
     DRY_SPELL_MIN_DAYS,
     LOW_SOIL_MOISTURE_FRACTION,
-    SOWING_WINDOW_DAYS,
-    TERMINAL_DROUGHT_DOY_START,
     UNSEASONAL_RAIN_RATIO,
 )
 
-ConditionPredicate = Callable[[MoistureState], bool]
+ConditionPredicate = Callable[[MoistureState, ConditionThresholds], bool]
 
 
-def is_delayed_onset(state: MoistureState) -> bool:
+def is_delayed_onset(
+    state: MoistureState, thresholds: ConditionThresholds = DEFAULT_CONDITION_THRESHOLDS
+) -> bool:
     """Monsoon onset later than the local normal by more than three weeks.
 
     Reads the Sirsa plan's own wording ("Delayed onset of monsoon by more than 3
@@ -65,10 +65,12 @@ def is_delayed_onset(state: MoistureState) -> bool:
     """
     if state.onset_delay_days is None:
         return False
-    return state.onset_delay_days > DELAYED_ONSET_DAYS
+    return state.onset_delay_days > thresholds.delayed_onset_days
 
 
-def is_dry_spell_after_sowing(state: MoistureState) -> bool:
+def is_dry_spell_after_sowing(
+    state: MoistureState, thresholds: ConditionThresholds = DEFAULT_CONDITION_THRESHOLDS
+) -> bool:
     """The flagship case: a dry spell striking a crop already in the ground.
 
     Three things must hold together:
@@ -78,25 +80,34 @@ def is_dry_spell_after_sowing(state: MoistureState) -> bool:
          to spend money on seed a second time.
       2. We are inside the re-sowing window. Past roughly 30 days re-sowing is no
          longer agronomically viable, and the advice would be worse than useless.
-      3. A meteorological dry spell has accumulated *and* the soil is genuinely dry.
+      3. The dry spell has run for the Sirsa plan's own 15-20 day band. The Sirsa
+         wording is "Normal onset followed by 15-20 days dry spell after sowing" --
+         a spell shorter than 15 days has not yet reached what the plan describes,
+         and past 20 days the plan's re-sow advice no longer applies either (by
+         then the window has usually closed some other way). The soil must also be
+         genuinely dry.
 
-    The conjunction in (3) is the important one. A dry spell over a wet profile is
-    a meteorological event, not an agricultural one -- the crop is fine, and firing
-    a re-sow advisory would cost a farmer a seed bag for nothing. Requiring both
-    the rainfall deficit and the soil-moisture deficit is what makes this an
-    agricultural trigger rather than a rainfall counter.
+    The soil-moisture check is the important second half of (3). A dry spell over
+    a wet profile is a meteorological event, not an agricultural one -- the crop
+    is fine, and firing a re-sow advisory would cost a farmer a seed bag for
+    nothing. Requiring both the rainfall deficit and the soil-moisture deficit is
+    what makes this an agricultural trigger rather than a rainfall counter.
     """
     if state.days_since_sowing is None:
         return False
-    if not 0 <= state.days_since_sowing <= SOWING_WINDOW_DAYS:
+    if not 0 <= state.days_since_sowing <= thresholds.sowing_window_days:
         return False
     return (
-        state.consecutive_dry_days >= DRY_SPELL_MIN_DAYS
+        thresholds.dry_spell_after_sowing_min_days
+        <= state.consecutive_dry_days
+        <= thresholds.dry_spell_after_sowing_max_days
         and state.soil_moisture_fraction < LOW_SOIL_MOISTURE_FRACTION
     )
 
 
-def is_mid_season_dry_spell(state: MoistureState) -> bool:
+def is_mid_season_dry_spell(
+    state: MoistureState, thresholds: ConditionThresholds = DEFAULT_CONDITION_THRESHOLDS
+) -> bool:
     """A monsoon break during vegetative or reproductive growth.
 
     The general case, checked after the after-sowing one so the more specific
@@ -104,7 +115,7 @@ def is_mid_season_dry_spell(state: MoistureState) -> bool:
     `is_terminal_drought` handles -- the same weather calls for different action at
     grain fill than at tillering, and the DACP tables are organised that way.
     """
-    if state.as_of.timetuple().tm_yday >= TERMINAL_DROUGHT_DOY_START:
+    if state.as_of.timetuple().tm_yday >= thresholds.terminal_drought_doy_start:
         return False
     return (
         state.consecutive_dry_days >= DRY_SPELL_MIN_DAYS
@@ -112,7 +123,9 @@ def is_mid_season_dry_spell(state: MoistureState) -> bool:
     )
 
 
-def is_terminal_drought(state: MoistureState) -> bool:
+def is_terminal_drought(
+    state: MoistureState, thresholds: ConditionThresholds = DEFAULT_CONDITION_THRESHOLDS
+) -> bool:
     """Moisture deficit late in the season, at grain fill or maturity.
 
     Split from the mid-season case because the agronomy diverges sharply:
@@ -120,7 +133,7 @@ def is_terminal_drought(state: MoistureState) -> bool:
     terminal, it is harvest management and fodder planning. Same physics, different
     DACP row, different advice.
     """
-    if state.as_of.timetuple().tm_yday < TERMINAL_DROUGHT_DOY_START:
+    if state.as_of.timetuple().tm_yday < thresholds.terminal_drought_doy_start:
         return False
     return (
         state.consecutive_dry_days >= DRY_SPELL_MIN_DAYS
@@ -128,7 +141,9 @@ def is_terminal_drought(state: MoistureState) -> bool:
     )
 
 
-def is_unseasonal_rain(state: MoistureState) -> bool:
+def is_unseasonal_rain(
+    state: MoistureState, thresholds: ConditionThresholds = DEFAULT_CONDITION_THRESHOLDS
+) -> bool:
     """Rainfall far above the pentad norm, where excess causes damage.
 
     A ratio against the local climatological normal rather than an absolute
@@ -139,6 +154,10 @@ def is_unseasonal_rain(state: MoistureState) -> bool:
     Guards against a zero normal: early-June pentads can have a climatological mean
     of zero in arid blocks, and dividing by it would make any rain at all
     infinitely unseasonal.
+
+    Takes `thresholds` only for signature parity with the rest of
+    `CONDITION_PREDICATES` -- unseasonal rain is not one of the day-count/day-band
+    conditions `ConditionThresholds` parameterises.
     """
     if state.rain_3d_normal_mm <= 0.0:
         return False
@@ -173,11 +192,16 @@ has already failed every more specific test.
 """
 
 
-def detect_condition(state: MoistureState) -> ConditionCode | None:
+def detect_condition(
+    state: MoistureState, thresholds: ConditionThresholds = DEFAULT_CONDITION_THRESHOLDS
+) -> ConditionCode | None:
     """The first condition in priority order whose predicate holds, else None.
 
     Args:
         state: Observed moisture state for one block on one day.
+        thresholds: Numeric thresholds the predicates read. Defaults to
+            `ankur_geo.DEFAULT_CONDITION_THRESHOLDS`, reproducing today's
+            Sirsa/Haryana-derived behaviour exactly.
 
     Returns:
         A `ConditionCode`, or `None` when the weather matches nothing the plan
@@ -186,12 +210,14 @@ def detect_condition(state: MoistureState) -> ConditionCode | None:
         into silence.
     """
     for code in CONDITION_PRIORITY:
-        if CONDITION_PREDICATES[code](state):
+        if CONDITION_PREDICATES[code](state, thresholds):
             return code
     return None
 
 
-def explain_condition(state: MoistureState) -> dict[str, bool]:
+def explain_condition(
+    state: MoistureState, thresholds: ConditionThresholds = DEFAULT_CONDITION_THRESHOLDS
+) -> dict[str, bool]:
     """Evaluate every predicate, for the audit log and the review UI.
 
     `detect_condition` returns a single winner, which is what the decision path
@@ -201,4 +227,7 @@ def explain_condition(state: MoistureState) -> dict[str, bool]:
 
     Diagnostic only -- nothing branches on this.
     """
-    return {code.value: predicate(state) for code, predicate in CONDITION_PREDICATES.items()}
+    return {
+        code.value: predicate(state, thresholds)
+        for code, predicate in CONDITION_PREDICATES.items()
+    }

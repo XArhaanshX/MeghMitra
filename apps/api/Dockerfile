@@ -12,6 +12,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY packages/schemas packages/schemas
 COPY packages/domain packages/domain
+COPY packages/geo packages/geo
 COPY services/document-intelligence services/document-intelligence
 COPY services/trigger-engine services/trigger-engine
 COPY apps/api apps/api
@@ -32,14 +33,29 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=builder /app /app
-# db/migrations: read by docker/migrate.sh. data/raw: source DACP PDFs the
-# /documents/ingest endpoint reads by repo-relative path (see README "Running
-# document ingestion") -- small (~350K), safe to bake into the image.
+# db/migrations: read by docker/migrate.sh (small, needed at image-build time
+# to construct the image but really applied by the initContainer/entrypoint
+# against Postgres, not read from disk by the API process itself).
+# data/fixtures: the hand-curated demo seed drafts `app.seed` reads via
+# `_repo_root()` (tiny, ~12KB total) -- needed so `make seed` /
+# `make seed-multi-state` can run against this image.
+#
+# The DACP corpus itself (data/raw source PDFs, data/processed extracted
+# rules) is NOT baked into this image -- it's ~317MB across 647 PDFs, versus
+# the handful of KB db/migrations and data/fixtures need. Mount it as a
+# named volume or bind mount at container start instead (see
+# docker-compose.yml's api service for an example), and point
+# ANKUR_RAW_ROOT / ANKUR_CORPUS_ROOT (below, see apps/api/app/config.py) at
+# the mount if it isn't at the default `/app/data/raw` /
+# `/app/data/processed`. Without a mount, document ingestion and coverage
+# endpoints that read the corpus will find nothing there.
 COPY db/migrations db/migrations
-COPY data/raw data/raw
+COPY data/fixtures data/fixtures
 
 ENV PATH="/app/.venv/bin:$PATH" \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    ANKUR_RAW_ROOT=data/raw \
+    ANKUR_CORPUS_ROOT=data/processed
 
 EXPOSE 8000
 

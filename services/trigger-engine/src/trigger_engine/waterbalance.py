@@ -36,6 +36,8 @@ keeps a full multi-decade run in the low hundreds of milliseconds.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pandas as pd
 
@@ -50,6 +52,14 @@ from trigger_engine.config import (
     RAINY_DAY_THRESHOLD_MM,
     RUNOFF_FRACTION,
 )
+
+logger = logging.getLogger(__name__)
+
+_DEFAULT_LATITUDE_DEG: float = 29.5
+"""Sirsa's latitude. The fallback used when `run_water_balance` is not given a
+real one -- see its `latitude_deg` docstring. Not a national default; it is
+honestly a Haryana-shaped placeholder until a verified per-block GIS join
+lands."""
 
 _RA_MM_COEFFICIENT = 15.34
 """(24*60/pi) * Gsc / lambda, with Gsc = 0.0820 MJ m-2 min-1 and lambda = 2.45
@@ -129,7 +139,7 @@ def _pivot_to_matrix(panel: pd.DataFrame, column: str) -> pd.DataFrame:
 def run_water_balance(
     panel: pd.DataFrame,
     *,
-    latitude_deg: float = 29.5,
+    latitude_deg: float | pd.Series | None = None,
     awc_mm: float = DEFAULT_AWC_MM,
     crop_coefficient: float = 1.0,
     runoff_fraction: float = RUNOFF_FRACTION,
@@ -152,9 +162,15 @@ def run_water_balance(
     Args:
         panel: Output of `preprocess.preprocess_observations`, including the
             pre-season spin-up days.
-        latitude_deg: Block centroid latitude. One value serves all blocks here
-            because a single district spans well under a degree; this becomes a
-            per-block column once the real GIS join lands.
+        latitude_deg: Block centroid latitude, degrees north. A scalar applies
+            to every block; a `pd.Series` indexed by block id supplies a
+            per-block value instead (a block missing from the series raises
+            `ValueError` rather than silently falling back). `None` (the
+            default) falls back to Sirsa's latitude and logs a warning -- there
+            is no verified per-block latitude source in this repo, and this
+            module follows the same "missing stays null, never guessed" rule
+            as the rest of the pipeline; the fallback-with-warning is the
+            honest version of that, not an exception to it.
         awc_mm: Total available water in the root zone. **Fit parameter** -- must
             be estimated on training seasons only once soil data is joined, or it
             leaks test-season information into every downstream feature.
@@ -184,12 +200,34 @@ def run_water_balance(
     dates = rain.index
     day_of_year = dates.dayofyear.to_numpy()
 
+    if latitude_deg is None:
+        logger.warning(
+            "PLACEHOLDER LATITUDE: no latitude_deg given, so every block in this "
+            "panel uses %.1f degrees (Sirsa's) for the water balance. There is no "
+            "verified per-block latitude source in this repo yet -- guessing one "
+            "would be worse than an honest placeholder. ET0, soil moisture and "
+            "everything downstream of them drift further from correct the farther "
+            "a block actually sits from Haryana.",
+            _DEFAULT_LATITUDE_DEG,
+        )
+        latitude_deg = _DEFAULT_LATITUDE_DEG
+
+    if isinstance(latitude_deg, pd.Series):
+        aligned = latitude_deg.reindex(rain.columns)
+        if aligned.isna().any():
+            missing = aligned.index[aligned.isna()].tolist()
+            raise ValueError(f"latitude_deg is missing block(s): {missing}")
+        latitude_input: float | np.ndarray = aligned.to_numpy(dtype=float)
+    else:
+        latitude_input = latitude_deg
+
     # ET0 for every (day, block) in one vectorized call. day_of_year is given a
-    # trailing axis so it broadcasts across block columns.
+    # trailing axis so it broadcasts across block columns; a per-block latitude
+    # array (shape (n_blocks,)) broadcasts against it the same way a scalar does.
     et0_matrix = reference_et0(
         tmin.to_numpy(dtype=float),
         tmax.to_numpy(dtype=float),
-        latitude_deg,
+        latitude_input,
         day_of_year[:, None],
     )
     et_crop = crop_coefficient * et0_matrix

@@ -50,22 +50,17 @@ units error, not weather."""
 # Season window
 # ---------------------------------------------------------------------------
 
-MONSOON_START_MONTH: Final[int] = 6
-MONSOON_START_DAY: Final[int] = 1
-MONSOON_END_MONTH: Final[int] = 9
-MONSOON_END_DAY: Final[int] = 30
-"""June 1 - September 30, the standard Indian southwest monsoon season (JJAS).
-
-Restricting the panel to JJAS is what keeps the class balance workable: outside
-the season nearly every day is dry, so including them would swamp the positive
-class with trivially-predictable examples and inflate every skill score."""
-
 WATER_BALANCE_SPINUP_DAYS: Final[int] = 30
-"""Pre-season days simulated before June 1 so the soil bucket starts from a
-physically-reached state rather than an arbitrary one.
+"""Pre-season days simulated before the season window opens so the soil bucket
+starts from a state derived from actual weather rather than a bare guess.
+Otherwise the first scored day carries an initialization artifact that the
+model would happily learn as a seasonal signal.
 
-Without spin-up, the first ~2 weeks of every season carry an initialisation
-artifact that the model would happily learn as a seasonal signal."""
+`MONSOON_START_MONTH`/`_DAY`/`MONSOON_END_MONTH`/`_DAY` used to live here as
+hardcoded JJAS bounds; `preprocess.in_monsoon_window` now takes a
+`SeasonWindow` (`ankur_geo.DEFAULT_SEASON_WINDOW` reproduces the old JJAS
+values exactly) so a non-Haryana season shape does not get silently filtered
+to nothing."""
 
 # ---------------------------------------------------------------------------
 # Forecast leads
@@ -120,26 +115,15 @@ HARGREAVES_COEFFICIENT: Final[float] = 0.0023
 not tuned by us."""
 
 # ---------------------------------------------------------------------------
-# Condition detection thresholds (project choices, tuned to the DACP's language)
+# Condition detection thresholds
 # ---------------------------------------------------------------------------
 
-DELAYED_ONSET_DAYS: Final[int] = 21
-"""'Delayed onset of monsoon by more than 3 weeks' -- read straight off the
-Sirsa plan's own wording."""
+# DELAYED_ONSET_DAYS, SOWING_WINDOW_DAYS, DRY_SPELL_AFTER_SOWING_MIN/MAX_DAYS
+# and TERMINAL_DROUGHT_DOY_START used to live here as Sirsa-derived constants.
+# `ankur_geo.ConditionThresholds` (default: `ankur_geo.DEFAULT_CONDITION_THRESHOLDS`)
+# replaces them with a parameter object `trigger_engine.conditions` predicates
+# accept, reproducing the same numbers by default.
 
-SOWING_WINDOW_DAYS: Final[int] = 30
-"""Days after sowing during which a dry spell counts as the 'after sowing' case
-rather than a mid-season break. Bounds the window in which re-sowing is still
-agronomically possible."""
-
-DRY_SPELL_AFTER_SOWING_MIN_DAYS: Final[int] = 15
-DRY_SPELL_AFTER_SOWING_MAX_DAYS: Final[int] = 20
-"""The Sirsa rule's own 15-20 day band, used at the condition layer where we map
-a modelled 5-day spell up to the DACP's wording."""
-
-TERMINAL_DROUGHT_DOY_START: Final[int] = 250
-"""Day-of-year after which a deficit is treated as terminal (grain fill /
-maturity) rather than mid-season. ~September 7."""
 
 UNSEASONAL_RAIN_RATIO: Final[float] = 3.0
 """Trailing 3-day rainfall this many times the pentad normal counts as

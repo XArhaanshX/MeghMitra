@@ -116,7 +116,7 @@ def test_approve_rule_without_citation_is_rejected_by_the_api(
 ):
     """Core invariant enforced at the HTTP boundary too: no citation -> no approved rule."""
     uncited = DACPRule(
-        fields=DACPRuleFields(district="Sirsa", condition="some condition"),
+        fields=DACPRuleFields(state="Haryana", district="Sirsa", condition="some condition"),
         citation=Citation(document="", page=1),
         confidence=0.95,
         extractor_version="document-intelligence/0.1.0",
@@ -147,7 +147,7 @@ def test_approve_page_past_document_end_is_422(
     asyncio.run(doc_repo.add(document))
     out_of_range = DACPRule(
         document_id=document.id,
-        fields=DACPRuleFields(district="Sirsa", condition="some condition"),
+        fields=DACPRuleFields(state="Haryana", district="Sirsa", condition="some condition"),
         citation=Citation(document=document.filename, page=37),
         confidence=0.95,
         extractor_version="document-intelligence/0.1.0",

@@ -29,6 +29,10 @@ jobs:
     outputs:
       short_sha: ${{ steps.vars.outputs.short_sha }}
     steps:
+      # The DACP corpus (data/raw, data/processed) is a runtime-mounted
+      # volume as of apps/api/Dockerfile, not a build-time input -- the image
+      # build below needs nothing beyond this checkout, so no corpus-fetch
+      # step runs here.
       - uses: actions/checkout@v4
 
       - id: vars

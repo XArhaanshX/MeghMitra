@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from ankur_domain.policies import can_emit_advisory, has_valid_citation
+from ankur_geo import NORTHEAST_MONSOON_WINDOW
 from ankur_schemas.citation import Citation
 from ankur_schemas.condition import ConditionCode, MoistureState
 from ankur_schemas.enums import ReviewStatus
@@ -41,7 +42,7 @@ from trigger_engine.decision import (
 )
 from trigger_engine.features import FEATURE_SPECS, build_features, pentad_climatology
 from trigger_engine.splits import season_folds
-from trigger_engine.synthetic import generate_panel
+from trigger_engine.synthetic import generate_panel, generate_panel_northeast_monsoon
 
 
 @pytest.fixture(scope="module")
@@ -124,6 +125,40 @@ def test_missing_days_become_rows() -> None:
     )
     panel, _ = preprocess.preprocess_observations(observations, include_spinup=False)
     assert len(panel) == 5, "the 3-day gap was not materialised as rows"
+
+
+def test_northeast_monsoon_profile_survives_the_season_window() -> None:
+    """A non-JJAS season must not be silently discarded by `in_monsoon_window`.
+
+    Exercises the `season=` parameterisation end to end on a profile shaped like
+    the northeast (Oct-Dec) monsoon -- the case that motivated raising instead of
+    silently returning an empty panel.
+    """
+    observations = generate_panel_northeast_monsoon(seasons=range(2015, 2018))
+    panel, report = preprocess.preprocess_observations(
+        observations, season=NORTHEAST_MONSOON_WINDOW
+    )
+    assert len(panel) > 0
+    assert report.rows_out > 0
+
+    balanced = waterbalance.run_water_balance(panel)
+    features = build_features(
+        balanced, training_seasons={2015, 2016, 2017}, season=NORTHEAST_MONSOON_WINDOW
+    )
+    phase = features[["day_of_season_sin", "day_of_season_cos"]].dropna()
+    assert len(phase) > 0, "no row had enough history for the Fourier phase feature"
+    assert np.isfinite(phase.to_numpy()).all(), "phase feature produced non-finite values"
+
+
+def test_wrong_season_window_raises_instead_of_silently_emptying() -> None:
+    """A JJAS-shaped panel filtered to the northeast window has zero overlap --
+    that must raise immediately, not return an empty panel that fails much later
+    and further from the actual mistake."""
+    observations = generate_panel(seasons=range(2015, 2016))
+    with pytest.raises(ValueError, match="northeast_monsoon_ond"):
+        preprocess.preprocess_observations(
+            observations, season=NORTHEAST_MONSOON_WINDOW, include_spinup=False
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +316,8 @@ def test_dry_spell_over_wet_soil_does_not_fire() -> None:
 
 
 def test_dry_spell_after_sowing_fires_on_dry_soil() -> None:
-    state = _state(consecutive_dry_days=10, soil_moisture_fraction=0.2, days_since_sowing=10)
+    """17 days sits inside the Sirsa plan's own 15-20 day band."""
+    state = _state(consecutive_dry_days=17, soil_moisture_fraction=0.2, days_since_sowing=10)
     assert conditions.detect_condition(state) is ConditionCode.DRY_SPELL_AFTER_SOWING
 
 
@@ -297,8 +333,24 @@ def test_sowing_anchor_is_never_inferred() -> None:
 
 def test_specific_condition_wins_over_general() -> None:
     """After-sowing outranks mid-season: it carries the re-sow variety."""
-    state = _state(consecutive_dry_days=10, soil_moisture_fraction=0.1, days_since_sowing=5)
+    state = _state(consecutive_dry_days=17, soil_moisture_fraction=0.1, days_since_sowing=5)
     assert conditions.detect_condition(state) is ConditionCode.DRY_SPELL_AFTER_SOWING
+
+
+def test_dry_spell_after_sowing_requires_the_15_to_20_day_band() -> None:
+    """A spell shorter than 15 days has not yet reached what the Sirsa plan
+    describes ("15-20 days dry spell after sowing"); it falls through to the
+    general mid-season case instead of the flagship after-sowing one.
+
+    This is an intentional behaviour change from before `ConditionThresholds`
+    wired the band in: `is_dry_spell_after_sowing` used to fire on any spell
+    >= `DRY_SPELL_MIN_DAYS` (5), ignoring the plan's own day band entirely.
+    """
+    state = _state(consecutive_dry_days=10, soil_moisture_fraction=0.1, days_since_sowing=10)
+    assert conditions.detect_condition(state) is ConditionCode.MID_SEASON_DRY_SPELL
+
+    too_long = _state(consecutive_dry_days=25, soil_moisture_fraction=0.1, days_since_sowing=10)
+    assert conditions.detect_condition(too_long) is not ConditionCode.DRY_SPELL_AFTER_SOWING
 
 
 def test_unseasonal_rain_needs_a_nonzero_normal() -> None:
@@ -321,6 +373,7 @@ def _rule(
     return DACPRule(
         id=uuid4(),
         fields=DACPRuleFields(
+            state="Haryana",
             district="Sirsa",
             condition="Normal onset followed by 15-20 day dry spell after sowing",
             condition_code=code,

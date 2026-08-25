@@ -53,6 +53,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Run the end-to-end path for this district instead of the skill table.",
     )
     parser.add_argument(
+        "--state",
+        help=(
+            "State the --district plan belongs to. Optional when the district name "
+            "is unambiguous in the loaded corpus; required (and enforced) when it "
+            "is not -- e.g. Bijapur exists in both Karnataka and Chhattisgarh."
+        ),
+    )
+    parser.add_argument(
         "--processed-root",
         type=Path,
         default=Path("data/processed"),
@@ -137,6 +145,33 @@ def _run_end_to_end(args: argparse.Namespace, seasons: range) -> int:
         )
         return 1
 
+    matching_states = store.states_for_district(args.district)
+    if args.state:
+        from trigger_engine.rulestore import state_key
+
+        if state_key(args.state) not in {state_key(s) for s in matching_states}:
+            print(
+                f"--state {args.state!r} does not match any loaded plan for district "
+                f"{args.district!r}. Plans loaded for this district name: "
+                f"{', '.join(matching_states) or '(none)'}.",
+                file=sys.stderr,
+            )
+            return 1
+        state = args.state
+    elif len(matching_states) == 1:
+        state = matching_states[0]
+    elif len(matching_states) == 0:
+        print(f"No plan found for district {args.district!r}.", file=sys.stderr)
+        return 1
+    else:
+        print(
+            f"District {args.district!r} is ambiguous: plans loaded for "
+            f"{', '.join(matching_states)}. Pass --state to disambiguate -- serving the "
+            f"wrong state's plan under this district name would be inventing advice.",
+            file=sys.stderr,
+        )
+        return 1
+
     if args.sowing_date is None:
         print(
             "NOTE: no --sowing-date given, so `days_since_sowing` stays None and the\n"
@@ -146,6 +181,7 @@ def _run_end_to_end(args: argparse.Namespace, seasons: range) -> int:
         )
 
     run = run_district(
+        state,
         args.district,
         store,
         generate_panel(seasons=seasons),

@@ -53,7 +53,21 @@ class ConditionCode(StrEnum):
 
     UNSEASONAL_RAIN = "unseasonal_rain"
     """Rainfall well above the local climatological norm at a stage where it
-    causes damage rather than benefit (e.g. at flowering)."""
+    causes damage rather than benefit (e.g. at flowering). Also the code
+    `document_intelligence.normalize` routes hailstorm and cyclone prose to
+    (see that module's docstring): excess rainfall is the physical signal
+    `trigger_engine.conditions.is_unseasonal_rain` can actually detect from
+    `MoistureState`, and hailstorm/cyclone damage in a DACP's contingency
+    table is described and actioned the same way as flood/heavy-rain damage.
+    This is a deliberate scope decision, not a placeholder: frost, cold wave
+    and heat wave are genuinely different physics (temperature, not
+    rainfall) with no representation in `MoistureState` at all, so they are
+    NOT folded in here or given a code of their own -- doing either would
+    mean fabricating a detector with no real signal behind it, which
+    `AGENTS.md`'s "nullable over guessed" invariant rules out. They stay
+    `UNMAPPED` (a true, auditable "cannot detect yet") until a temperature
+    series is added to the weather panel and `MoistureState` gains a field
+    for it -- a dataset requirement, not a code change."""
 
     UNMAPPED = "unmapped"
     """The extractor could not normalize this rule's prose to a code. Excluded

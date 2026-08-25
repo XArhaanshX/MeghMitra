@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 from ankur_domain.policies import can_emit_advisory
+from ankur_geo import DEFAULT_SEASON_WINDOW, SeasonWindow
 from ankur_schemas.condition import ConditionCode, DrySpellForecast, MoistureState
 from ankur_schemas.rule import DACPRule
 
@@ -99,14 +100,27 @@ class PipelineArtifacts:
     sample_size: dict[str, float] = field(default_factory=dict)
 
 
-def prepare_panel(observations: pd.DataFrame, *, latitude_deg: float = 29.5) -> pd.DataFrame:
+def prepare_panel(
+    observations: pd.DataFrame,
+    *,
+    latitude_deg: float | pd.Series | None = None,
+    season: SeasonWindow = DEFAULT_SEASON_WINDOW,
+) -> pd.DataFrame:
     """Preprocess, then run the water balance. The deterministic half of the pipeline.
 
     Separated from the modelling half because it is reusable as-is for a replay or
     a nightly job: neither needs a trained model to compute today's moisture state,
     and the DACP condition predicates run on this output alone.
+
+    Args:
+        observations: Raw block-day weather.
+        latitude_deg: Forwarded to `waterbalance.run_water_balance` -- see its
+            docstring. `None` (the default) falls back to Sirsa's latitude with
+            a logged warning rather than guessing a real one.
+        season: Forwarded to `preprocess.preprocess_observations` -- the window
+            the panel is restricted to. Defaults to JJAS.
     """
-    panel, report = preprocess_observations(observations)
+    panel, report = preprocess_observations(observations, season=season)
     logger.info(
         "preprocessed %d -> %d rows, %d blocks, %d seasons, %.2f%% rainfall imputed",
         report.rows_in,
@@ -133,6 +147,7 @@ def run_cross_validation(
     models: list[ProbabilisticModel] | None = None,
     teleconnections: pd.DataFrame | None = None,
     n_holdout_seasons: int = 1,
+    season: SeasonWindow = DEFAULT_SEASON_WINDOW,
 ) -> list[CrossValidationResult]:
     """Leave-one-season-out evaluation of every model on the ladder.
 
@@ -146,6 +161,9 @@ def run_cross_validation(
         models: Defaults to `models.default_ladder()`.
         teleconnections: Optional ONI/MJO frame.
         n_holdout_seasons: Final seasons withheld from the rotation entirely.
+        season: Forwarded to `features.build_features` -- must match whatever
+            season `panel` was built under, or the Fourier phase anchor and the
+            data disagree. Defaults to JJAS.
 
     Returns:
         One `CrossValidationResult` per model.
@@ -172,7 +190,10 @@ def run_cross_validation(
         # them is fitted on training seasons only. Rebuilding is the price of not
         # leaking, and it costs a fraction of a second.
         fold_features = build_features(
-            panel, training_seasons=set(fold.train_seasons), teleconnections=teleconnections
+            panel,
+            training_seasons=set(fold.train_seasons),
+            teleconnections=teleconnections,
+            season=season,
         )
         train_x, train_y = drop_unlabelable(
             fold_features.iloc[fold.train_index], labels_full.iloc[fold.train_index]
@@ -319,13 +340,29 @@ def emit_advisory(
     return decision.action, decision, matched, []
 
 
-def run_demo(*, seasons: range = range(1995, 2026), lead_days: int = 14) -> PipelineArtifacts:
+def run_demo(
+    *,
+    seasons: range = range(1995, 2026),
+    lead_days: int = 14,
+    latitude_deg: float | pd.Series | None = None,
+    season: SeasonWindow = DEFAULT_SEASON_WINDOW,
+) -> PipelineArtifacts:
     """Smoke run over synthetic data. Exercises every stage; proves nothing about skill.
 
     Deliberately loud about what it is. The numbers it prints say the code is wired
     correctly and runs fast; they say nothing about whether the method works,
     because the weather comes from `synthetic.py`. Real verification needs IMD
     gridded rainfall and ECMWF reforecasts -- see `docs/ml-pipeline.md`.
+
+    Args:
+        seasons: Calendar years to generate synthetic weather for.
+        lead_days: Forecast horizon.
+        latitude_deg: Forwarded to `prepare_panel`. `None` (the default) falls
+            back to Sirsa's latitude with a logged warning.
+        season: Forwarded to `prepare_panel`, `run_cross_validation` and
+            `build_features`, so the season window and the Fourier phase
+            anchor agree. Defaults to JJAS, matching `synthetic.generate_panel`'s
+            default shape.
     """
     from trigger_engine.synthetic import generate_panel, generate_teleconnections
 
@@ -333,15 +370,17 @@ def run_demo(*, seasons: range = range(1995, 2026), lead_days: int = 14) -> Pipe
     observations = generate_panel(seasons=seasons)
     teleconnections = generate_teleconnections(seasons=seasons)
 
-    panel = prepare_panel(observations)
-    results = run_cross_validation(panel, lead_days=lead_days, teleconnections=teleconnections)
+    panel = prepare_panel(observations, latitude_deg=latitude_deg, season=season)
+    results = run_cross_validation(
+        panel, lead_days=lead_days, teleconnections=teleconnections, season=season
+    )
 
     labels = build_labels(panel, lead_days=lead_days)
     all_seasons = season_of(panel[COL_DATE])
     sample_size = effective_sample_size(
         labels, all_seasons, lead_days=lead_days, blocks=panel[COL_BLOCK]
     )
-    features = build_features(panel, training_seasons=set(all_seasons.unique()))
+    features = build_features(panel, training_seasons=set(all_seasons.unique()), season=season)
 
     logger.info("demo run complete in %.2fs", time.perf_counter() - started)
     return PipelineArtifacts(

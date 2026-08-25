@@ -1,4 +1,4 @@
-.PHONY: help dev web test lint format migrate ingest seed trigger-demo docker-up docker-down docker-reset logs ps psql sync
+.PHONY: help dev web test lint format migrate ingest seed seed-multi-state trigger-demo docker-up docker-down docker-reset logs ps psql sync
 .DEFAULT_GOAL := help
 
 DISTRICT ?= Sirsa
@@ -46,6 +46,9 @@ ingest-all-dacp: ## Ingest every PDF under data/raw/ into data/processed/ (in-pr
 
 seed: docker-up migrate ## Load 3 cited Sirsa demo rules (validate_draft, then ReviewService.approve)
 	uv run python -m app.seed
+
+seed-multi-state: docker-up migrate ## Load demo rules for Sirsa plus every other state in multi_state_demo_seed.json
+	uv run python -m app.seed --multi-state
 
 # Runs on SYNTHETIC weather -- verifies the pipeline is wired and fast, not that
 # the forecast has skill. Real verification needs IMD gridded rainfall and ECMWF

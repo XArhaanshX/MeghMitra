@@ -28,6 +28,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from ankur_geo import DEFAULT_SEASON_WINDOW, SeasonWindow
 
 from trigger_engine.config import (
     COL_BLOCK,
@@ -37,10 +38,6 @@ from trigger_engine.config import (
     COL_RAIN_IMPUTED,
     COL_TMAX,
     COL_TMIN,
-    MONSOON_END_DAY,
-    MONSOON_END_MONTH,
-    MONSOON_START_DAY,
-    MONSOON_START_MONTH,
     PHYSICAL_MAX_DAILY_RAIN_MM,
     REQUIRED_OBSERVATION_COLUMNS,
     TEMPERATURE_INTERPOLATE_LIMIT_DAYS,
@@ -93,17 +90,28 @@ def season_of(dates: pd.Series) -> pd.Series:
     return dates.dt.year
 
 
-def in_monsoon_window(dates: pd.Series, *, include_spinup: bool = False) -> pd.Series:
-    """Boolean mask for dates inside the JJAS season.
+def in_monsoon_window(
+    dates: pd.Series,
+    *,
+    include_spinup: bool = False,
+    season: SeasonWindow = DEFAULT_SEASON_WINDOW,
+) -> pd.Series:
+    """Boolean mask for dates inside `season`.
 
     With `include_spinup`, the window opens `WATER_BALANCE_SPINUP_DAYS` earlier
     so the soil-water bucket can reach a physically-realistic state before the
-    first day we score. Without spin-up, June's soil moisture is an artifact of
-    whatever the bucket was initialised to, and a model will happily learn that
-    artifact as a seasonal signal.
+    first day we score. Without spin-up, the season's first days' soil moisture
+    is an artifact of whatever the bucket was initialised to, and a model will
+    happily learn that artifact as a seasonal signal.
+
+    `season` defaults to `DEFAULT_SEASON_WINDOW` (JJAS), reproducing the module's
+    old hardcoded `MONSOON_START_MONTH`/`_DAY`/`MONSOON_END_MONTH`/`_DAY` bounds
+    exactly. A region whose principal rains fall outside JJAS -- the northeast
+    monsoon's Oct-Dec, say -- must pass its own `SeasonWindow`; filtering it
+    through the JJAS default would silently discard its entire season.
     """
-    start_doy = pd.Timestamp(2001, MONSOON_START_MONTH, MONSOON_START_DAY).day_of_year
-    end_doy = pd.Timestamp(2001, MONSOON_END_MONTH, MONSOON_END_DAY).day_of_year
+    start_doy = pd.Timestamp(2001, season.start_month, season.start_day).day_of_year
+    end_doy = pd.Timestamp(2001, season.end_month, season.end_day).day_of_year
     if include_spinup:
         start_doy -= WATER_BALANCE_SPINUP_DAYS
 
@@ -222,6 +230,7 @@ def preprocess_observations(
     observations: pd.DataFrame,
     *,
     include_spinup: bool = True,
+    season: SeasonWindow = DEFAULT_SEASON_WINDOW,
 ) -> tuple[pd.DataFrame, PreprocessReport]:
     """Turn raw block-day observations into the canonical panel.
 
@@ -232,11 +241,19 @@ def preprocess_observations(
         include_spinup: Keep the pre-season days the water balance needs to warm
             up. Set False only when the caller has already run the water balance
             and wants the scoring window alone.
+        season: The window to restrict the panel to. Defaults to JJAS
+            (`ankur_geo.DEFAULT_SEASON_WINDOW`), reproducing today's behaviour.
 
     Returns:
         `(panel, report)`. The panel is sorted by (block, date), has a gap-free
         daily index within its date span, carries `COL_RAIN_IMPUTED`, and is
-        restricted to the monsoon window.
+        restricted to `season`.
+
+    Raises:
+        ValueError: if no row of `observations` falls inside `season` -- almost
+            always a sign the caller passed the wrong `season` for this data,
+            not that the data itself is bad. An empty panel used to pass through
+            silently here and fail confusingly downstream instead.
 
     Order matters and is not arbitrary:
       1. validate  -- fail by name before any work
@@ -262,8 +279,20 @@ def preprocess_observations(
     frame, implausible = _cap_implausible_rain(frame)
     frame = _impute_per_variable(frame)
 
-    frame = frame.loc[in_monsoon_window(frame[COL_DATE], include_spinup=include_spinup)]
+    frame = frame.loc[
+        in_monsoon_window(frame[COL_DATE], include_spinup=include_spinup, season=season)
+    ]
     frame = frame.reset_index(drop=True)
+
+    if frame.empty:
+        raise ValueError(
+            f"preprocess_observations: no rows fall inside the {season.name!r} season "
+            f"window (month/day {season.start_month}/{season.start_day} - "
+            f"{season.end_month}/{season.end_day}). Either the observations cover a "
+            f"different part of the year than `season` describes, or this really is "
+            f"the wrong season for this data -- an empty panel used to pass through "
+            f"silently and fail much later, which is the bug this check replaces."
+        )
 
     if COL_ENS_DRY_FRACTION not in frame.columns:
         frame[COL_ENS_DRY_FRACTION] = np.nan

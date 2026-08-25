@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from ankur_geo import NORTHEAST_MONSOON_WINDOW
 
 from trigger_engine.config import (
     COL_BLOCK,
@@ -67,6 +68,17 @@ SIRSA_BLOCKS: tuple[str, ...] = (
     "Nathusari Chopta",
 )
 """Block labels only. No real data about these places is encoded here."""
+
+NORTHEAST_MONSOON_DEMO_BLOCKS: tuple[str, ...] = (
+    "Demo-NEM-1",
+    "Demo-NEM-2",
+    "Demo-NEM-3",
+)
+"""Block labels only, same status as `SIRSA_BLOCKS` -- no real place's data is
+encoded here. Deliberately generic rather than borrowing real Tamil Nadu /
+Puducherry district names: `generate_panel_northeast_monsoon` exists to
+exercise the `season=NORTHEAST_MONSOON_WINDOW` code path in CI, not to model
+any specific region's actual climate."""
 
 
 def _seasonal_wetness(day_of_season: np.ndarray) -> np.ndarray:
@@ -180,6 +192,100 @@ def generate_panel(
         # days. The compression matters because Hargreaves ET0 reads diurnal range
         # as a cloudiness proxy.
         base_temp = 34.0 - 4.0 * np.sin(np.pi * np.clip(day_of_season, 0, 122) / 122.0)
+        tmax = base_temp[:, None] + rng.normal(0, 1.6, (n_days, n_blocks)) - 3.5 * is_wet
+        tmin = tmax - (11.0 - 4.0 * is_wet) + rng.normal(0, 0.8, (n_days, n_blocks))
+
+        frames.append(
+            pd.DataFrame(
+                {
+                    COL_BLOCK: np.repeat(blocks, n_days),
+                    COL_DATE: np.tile(dates, n_blocks),
+                    COL_RAIN: rain.T.ravel(),
+                    COL_TMAX: tmax.T.ravel(),
+                    COL_TMIN: tmin.T.ravel(),
+                }
+            )
+        )
+
+    panel = pd.concat(frames, ignore_index=True)
+    panel = panel.sort_values([COL_BLOCK, COL_DATE]).reset_index(drop=True)
+    panel = _synthesise_ensemble(panel, rng)
+
+    if missing_rain_fraction > 0:
+        gaps = rng.random(len(panel)) < missing_rain_fraction
+        panel.loc[gaps, COL_RAIN] = np.nan
+
+    return panel
+
+
+def _seasonal_wetness_northeast(day_of_season: np.ndarray) -> np.ndarray:
+    """Seasonal envelope for `generate_panel_northeast_monsoon`: a smooth peak at
+    the midpoint of `NORTHEAST_MONSOON_WINDOW`, the same shape as
+    `_seasonal_wetness` but parameterised by that window's length instead of
+    JJAS's hardcoded 122 days.
+    """
+    length = NORTHEAST_MONSOON_WINDOW.length_days
+    return 0.35 + 0.45 * np.sin(np.pi * np.clip(day_of_season, 0, length) / length)
+
+
+def generate_panel_northeast_monsoon(
+    *,
+    seasons: range = range(1990, 2026),
+    blocks: tuple[str, ...] = NORTHEAST_MONSOON_DEMO_BLOCKS,
+    seed: int = RANDOM_SEED,
+    missing_rain_fraction: float = 0.01,
+) -> pd.DataFrame:
+    """Generate a synthetic block-day panel shaped like a northeast (Oct-Dec)
+    monsoon season -- exists purely to exercise the `season=` parameterisation
+    `preprocess.in_monsoon_window` and `features.build_features` now take, on a
+    panel that is not JJAS-shaped. Not a calibrated model of Tamil Nadu,
+    Puducherry, or any other specific place -- see `NORTHEAST_MONSOON_DEMO_BLOCKS`.
+
+    Mirrors `generate_panel` exactly: same two-state Markov occurrence chain,
+    same gamma intensity, same temperature construction. The only differences
+    are the calendar window (`NORTHEAST_MONSOON_WINDOW`: Sept 1 spin-up,
+    Oct 1 - Dec 31 scored season) and the wetness envelope's peak location.
+
+    Args:
+        seasons: Calendar years to generate.
+        blocks: Block labels.
+        seed: Fixed for reproducibility.
+        missing_rain_fraction: Share of days with rainfall set to NaN.
+
+    Returns:
+        A long frame with `REQUIRED_OBSERVATION_COLUMNS` plus
+        `COL_ENS_DRY_FRACTION`, covering September 1 - December 31 of each
+        season (September supplies the water-balance spin-up).
+    """
+    season_length = NORTHEAST_MONSOON_WINDOW.length_days
+    rng = np.random.default_rng(seed)
+    frames = []
+
+    for season in seasons:
+        dates = pd.date_range(f"{season}-09-01", f"{season}-12-31", freq="D")
+        n_days, n_blocks = len(dates), len(blocks)
+        day_of_season = (dates - pd.Timestamp(f"{season}-10-01")).days.to_numpy()
+
+        season_factor = rng.normal(1.0, 0.18)
+        wet_probability = np.clip(
+            _seasonal_wetness_northeast(day_of_season) * season_factor, 0.05, 0.95
+        )
+
+        is_wet = np.zeros((n_days, n_blocks), dtype=bool)
+        state = rng.random(n_blocks) < wet_probability[0]
+        for day in range(n_days):
+            p_base = wet_probability[day]
+            p_transition = np.where(state, 0.35 + 0.5 * p_base, 0.55 * p_base)
+            draw = 0.75 * rng.random() + 0.25 * rng.random(n_blocks)
+            state = draw < p_transition
+            is_wet[day] = state
+
+        intensity = rng.gamma(shape=0.9, scale=11.0, size=(n_days, n_blocks))
+        rain = np.where(is_wet, intensity, 0.0)
+
+        base_temp = 30.0 - 4.0 * np.sin(
+            np.pi * np.clip(day_of_season, 0, season_length) / season_length
+        )
         tmax = base_temp[:, None] + rng.normal(0, 1.6, (n_days, n_blocks)) - 3.5 * is_wet
         tmin = tmax - (11.0 - 4.0 * is_wet) + rng.normal(0, 0.8, (n_days, n_blocks))
 

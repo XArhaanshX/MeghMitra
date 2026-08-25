@@ -26,6 +26,7 @@ Full rationale and the exact invariants: **`docs/domain-model.md`**.
 |---|---|---|
 | Data shapes (Pydantic) | `packages/schemas/` | `docs/domain-model.md` |
 | Business rules, repository ports, services | `packages/domain/` | `docs/domain-model.md` |
+| State/district identity, region resolution, ML season/threshold params | `packages/geo/` | `docs/domain-model.md` |
 | PDF -> structured rule pipeline | `services/document-intelligence/` | `docs/document-intelligence.md` |
 | Weather -> moisture state -> condition -> advisory | `services/trigger-engine/` | `docs/ml-pipeline.md` |
 | FastAPI service | `apps/api/` | `docs/api.md` |
@@ -34,6 +35,10 @@ Full rationale and the exact invariants: **`docs/domain-model.md`**.
 | System diagram, layering, tech-choice rationale | -- | `docs/architecture.md` |
 | Non-obvious decisions and why | -- | `docs/decisions.md` |
 | Local setup, running everything | -- | `README.md` |
+
+The corpus is India-wide and district names are not globally unique -- any code that looks up a
+district (rule matching, ingestion, the API) must pass `state` alongside it and go through
+`ankur_geo.resolve_region()` rather than a district-only lookup.
 
 `apps/app` is a separate pnpm-managed Next.js project with its own `AGENTS.md` and `CLAUDE.md`
 (scoped to Next.js/frontend conventions -- read those when working there instead of duplicating

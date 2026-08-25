@@ -6,13 +6,15 @@ files for the exact implementation.
 
 ## `DACPRule`
 
-The central object (`ankur_schemas/rule.py`). Every field except `district` and `condition` is
-nullable -- DACP documents are inconsistent in what they specify, and a missing value must stay
+The central object (`ankur_schemas/rule.py`). Every field except `state`, `district`, and
+`condition` is nullable -- DACP documents are inconsistent in what they specify, and a missing
+value must stay
 `null`, never guessed or backfilled from general agricultural knowledge.
 
 ```json
 {
   "fields": {
+    "state": "Haryana",
     "district": "Sirsa",
     "crop": "Pearl millet",
     "condition": "Normal onset followed by 15-20 day dry spell after sowing",
@@ -82,3 +84,26 @@ the top of `ankur_schemas/enums.py`). Update `db/migrations/` with a new migrati
 edit `0001_init.sql` in place once it has shipped) -- `extracted_rules.fields` is JSONB, so new
 optional fields need no migration for the data itself, only for any new indexed/queryable
 columns you add to `rule_citations` or similar.
+
+## State/district identity, and how it relates to the citation invariant
+
+`DACPRuleFields.state` (`packages/schemas/src/ankur_schemas/rule.py`) is required, alongside
+`district`, because the corpus is now national and district names are not globally unique --
+several district names (Bijapur, Balrampur, Bilaspur, Hamirpur, Pratapgarh, Raigarh,
+Aurangabad) each name a district in two different states in the ingested corpus. `packages/geo`
+(`ankur_geo`) is the canonical identity and lookup layer: `resolve_region(state, district)`
+returns both unambiguously or raises `RegionResolutionError` naming the ambiguity, rather than
+guessing — the same "nullable/refuse over guessed" discipline this doc already asks for rule
+fields, extended to geography. `RuleStore.candidates()` (the trigger engine's read path) is
+keyed on `(state, district, condition_code)` for exactly this reason: a district-only key would
+silently return a different state's contingency plan for a shared district name.
+
+**This is a lookup-correctness concern, not an approval-invariant concern.** A rule's citation
+validity — `has_valid_citation()`, and therefore `can_approve()` — depends only on the rule's
+own `document`/`page`/`page_count`, exactly as before; nothing about `state` enters that check,
+and a rule's `review_status` is unaffected by which state or district it belongs to. State only
+changes whether a *lookup* finds the right rule (or correctly refuses to guess); it never
+changes whether a rule that has already been found is *citable*. Do not conflate the two when
+extending either check — a rule can be perfectly cited and approved while still being
+unreachable through `candidates()` because the caller supplied the wrong state, and that is
+working as intended, not a citation failure.

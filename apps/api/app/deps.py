@@ -7,6 +7,9 @@ or `app.state` directly. Tests override these with in-memory services via
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from typing import Any
+
 from ankur_domain.repositories import (
     AdvisoryRepository,
     DocumentRepository,
@@ -82,3 +85,38 @@ def get_advisory_service(request: Request) -> AdvisoryEmissionService:
         advisories=get_advisory_repo(request),
         documents=get_document_repo(request),
     )
+
+
+
+async def paginated(
+    fetch: Callable[..., Awaitable[list[Any]]],
+    *,
+    limit: int | None,
+    offset: int | None,
+    default_limit: int = 50,
+    count_limit: int = 1_000_000,
+) -> list[Any] | dict[str, Any]:
+    """Additive pagination envelope for GET list endpoints.
+
+    `fetch(limit=..., offset=...)` is any service method already accepting
+    those two keywords (`RuleService.list`, `DocumentService.list`,
+    `ReviewService.review_queue`, `AdvisoryEmissionService.list_events`/
+    `list_advisories`) with every other filter already bound (e.g. via a
+    lambda). Returns the bare list when the caller passed neither `limit`
+    nor `offset` explicitly -- so existing clients/tests that never asked
+    for pagination keep getting exactly what they got before. Opting in to
+    either one switches to `{"items", "total", "limit", "offset"}`, with
+    `total` from a second, unbounded fetch of the same filters (there is no
+    separate COUNT query in any repository Protocol)."""
+    if limit is None and offset is None:
+        return await fetch(limit=default_limit, offset=0)
+    effective_limit = default_limit if limit is None else limit
+    effective_offset = 0 if offset is None else offset
+    page = await fetch(limit=effective_limit, offset=effective_offset)
+    total = len(await fetch(limit=count_limit, offset=0))
+    return {
+        "items": page,
+        "total": total,
+        "limit": effective_limit,
+        "offset": effective_offset,
+    }

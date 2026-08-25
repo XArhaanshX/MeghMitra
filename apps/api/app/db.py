@@ -51,9 +51,24 @@ class PostgresDocumentRepository:
             row = await conn.fetchrow("SELECT * FROM documents WHERE id = $1", document_id)
         return DocumentMetadata(**dict(row)) if row else None
 
-    async def list(self) -> list[DocumentMetadata]:
+    async def list(
+        self, *, state: str | None = None, limit: int = 50, offset: int = 0
+    ) -> list[DocumentMetadata]:
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch("SELECT * FROM documents ORDER BY registered_at DESC")
+            if state is not None:
+                rows = await conn.fetch(
+                    "SELECT * FROM documents WHERE state ILIKE $1 "
+                    "ORDER BY registered_at DESC LIMIT $2 OFFSET $3",
+                    state,
+                    limit,
+                    offset,
+                )
+            else:
+                rows = await conn.fetch(
+                    "SELECT * FROM documents ORDER BY registered_at DESC LIMIT $1 OFFSET $2",
+                    limit,
+                    offset,
+                )
         return [DocumentMetadata(**dict(row)) for row in rows]
 
     async def update_status(self, document_id: UUID, status: str) -> None:
@@ -113,6 +128,11 @@ def _rule_from_row(row: asyncpg.Record) -> DACPRule:
     data["fields"] = _json_value(data["fields"])
     data["citation"] = _json_value(data["citation"])
     data["notes"] = _json_value(data["notes"])
+    # Denormalized, indexed copies of fields.state/fields.district for
+    # querying (see db/migrations/0003_geographic_scope.sql) -- not part of
+    # the `DACPRule` domain model.
+    data.pop("state_code", None)
+    data.pop("district_code", None)
     return DACPRule(**data)
 
 
@@ -126,8 +146,9 @@ class PostgresRuleRepository:
                 """
                 INSERT INTO extracted_rules
                     (id, document_id, fields, citation, confidence, extractor_version,
-                     extracted_at, review_status, reviewed_by, reviewed_at, notes)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                     extracted_at, review_status, reviewed_by, reviewed_at, notes,
+                     state_code, district_code)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                 """,
                 rule.id,
                 rule.document_id,
@@ -140,6 +161,8 @@ class PostgresRuleRepository:
                 rule.reviewed_by,
                 rule.reviewed_at,
                 json.dumps(rule.notes),
+                rule.fields.state,
+                rule.fields.district,
             )
             await conn.execute(
                 """
@@ -162,16 +185,33 @@ class PostgresRuleRepository:
             row = await conn.fetchrow("SELECT * FROM extracted_rules WHERE id = $1", rule_id)
         return _rule_from_row(row) if row else None
 
-    async def list(self, *, review_status: str | None = None) -> list[DACPRule]:
+    async def list(
+        self,
+        *,
+        review_status: str | None = None,
+        state: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[DACPRule]:
+        conditions: list[str] = []
+        params: list[object] = []
+        if review_status is not None:
+            params.append(review_status)
+            conditions.append(f"review_status = ${len(params)}")
+        if state is not None:
+            params.append(state)
+            conditions.append(f"state_code ILIKE ${len(params)}")
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        params.append(limit)
+        limit_idx = len(params)
+        params.append(offset)
+        offset_idx = len(params)
         async with self._pool.acquire() as conn:
-            if review_status is not None:
-                rows = await conn.fetch(
-                    "SELECT * FROM extracted_rules WHERE review_status = $1 "
-                    "ORDER BY extracted_at DESC",
-                    review_status,
-                )
-            else:
-                rows = await conn.fetch("SELECT * FROM extracted_rules ORDER BY extracted_at DESC")
+            rows = await conn.fetch(
+                f"SELECT * FROM extracted_rules {where} "
+                f"ORDER BY extracted_at DESC LIMIT ${limit_idx} OFFSET ${offset_idx}",
+                *params,
+            )
         return [_rule_from_row(row) for row in rows]
 
     async def update(self, rule: DACPRule) -> DACPRule:
@@ -243,8 +283,9 @@ class PostgresTriggerEventRepository:
             await conn.execute(
                 """
                 INSERT INTO trigger_events
-                    (id, block_id, rule_id, detected_at, condition, payload, block_key, reasons)
-                VALUES ($1, NULL, $2, $3, $4, $5, $6, $7)
+                    (id, block_id, rule_id, detected_at, condition, payload, block_key, reasons,
+                     state_code, district_code)
+                VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9)
                 """,
                 event.id,
                 event.rule_id,
@@ -253,6 +294,8 @@ class PostgresTriggerEventRepository:
                 _jsonb(event.payload),
                 event.block_key,
                 _jsonb(event.reasons),
+                event.payload.get("state"),
+                event.payload.get("district"),
             )
         return event
 
@@ -261,9 +304,24 @@ class PostgresTriggerEventRepository:
             row = await conn.fetchrow("SELECT * FROM trigger_events WHERE id = $1", event_id)
         return None if row is None else _trigger_event_from_row(row)
 
-    async def list(self) -> list[TriggerEvent]:
+    async def list(
+        self, *, state: str | None = None, limit: int = 50, offset: int = 0
+    ) -> list[TriggerEvent]:
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch("SELECT * FROM trigger_events ORDER BY detected_at DESC")
+            if state is not None:
+                rows = await conn.fetch(
+                    "SELECT * FROM trigger_events WHERE state_code ILIKE $1 "
+                    "ORDER BY detected_at DESC LIMIT $2 OFFSET $3",
+                    state,
+                    limit,
+                    offset,
+                )
+            else:
+                rows = await conn.fetch(
+                    "SELECT * FROM trigger_events ORDER BY detected_at DESC LIMIT $1 OFFSET $2",
+                    limit,
+                    offset,
+                )
         return [_trigger_event_from_row(row) for row in rows]
 
 
@@ -302,13 +360,19 @@ class PostgresAdvisoryRepository:
         self._pool = pool
 
     async def add(self, advisory: Advisory) -> Advisory:
+        # `state_code`/`district_code` are copied from the parent trigger_event
+        # row (already inserted by the time an Advisory is created -- see
+        # `AdvisoryEmissionService.evaluate`): `Advisory` itself carries no
+        # geographic field to write from directly (see ankur_schemas.advisory).
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
                 INSERT INTO advisories
                     (id, trigger_event_id, rule_id, generated_at, channel, delivered_to,
-                     action, reason)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                     action, reason, state_code, district_code)
+                SELECT $1, $2, $3, $4, $5, $6, $7, $8, te.state_code, te.district_code
+                FROM trigger_events te
+                WHERE te.id = $2
                 """,
                 advisory.id,
                 advisory.trigger_event_id,

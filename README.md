@@ -1,6 +1,8 @@
 # Ankur
 
-SIH 2026 (SIH26086), Ministry of Earth Sciences. Prototype scope: **Haryana → Sirsa**.
+SIH 2026 (SIH26086), Ministry of Earth Sciences. Corpus: **India-wide** (646 ingested DACP
+documents across 30 states/UTs). Flagship demo scope remains **Haryana → Sirsa** -- the only
+district with hand-curated, page-verified seed rules (`make seed`).
 
 ## What Ankur is
 
@@ -68,14 +70,17 @@ ankur/
 │
 ├── packages/
 │   ├── schemas/                ankur_schemas: Pydantic models (DACPRule, Citation, enums)
-│   └── domain/                 ankur_domain: business invariants, repository ports, services
+│   ├── domain/                 ankur_domain: business invariants, repository ports, services
+│   └── geo/                    ankur_geo: state/district identity, resolve_region(), season +
+│                                 condition-threshold parameters (India-wide, corpus-derived)
 │
 ├── services/
-│   └── document-intelligence/  PDF -> pages -> chunks -> rule drafts -> validated rules
+│   ├── document-intelligence/  PDF -> pages -> chunks -> rule drafts -> validated rules
+│   └── trigger-engine/         weather -> moisture -> condition -> advisory (RuleStore reader)
 │
 ├── data/
-│   ├── raw/                    Source DACP PDFs (e.g. HAR16-Sirsa-30-06-2011.pdf)
-│   ├── processed/               `make ingest` output JSON, per district
+│   ├── raw/                    Source DACP PDFs (647 files, 30 states/UTs)
+│   ├── processed/               `make ingest` output JSON, `<state_slug>/<district_slug>/*.json`
 │   └── fixtures/                Hand-curated Sirsa fixture used by the test suite
 │
 ├── db/migrations/              Raw SQL migrations (documents, extracted_rules, ...)
@@ -88,20 +93,23 @@ ankur/
 └── pyproject.toml              uv workspace root
 ```
 
-`apps/api`, `packages/schemas`, `packages/domain`, and `services/document-intelligence` are a
-single [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/) -- one venv,
-one lockfile, editable cross-package imports (`ankur_schemas`, `ankur_domain`,
-`document_intelligence`). `apps/app` is a separate pnpm-managed Next.js project.
+`apps/api`, `packages/schemas`, `packages/domain`, `packages/geo`,
+`services/document-intelligence`, and `services/trigger-engine` are a single
+[uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/) -- one venv, one
+lockfile, editable cross-package imports (`ankur_schemas`, `ankur_domain`, `ankur_geo`,
+`document_intelligence`, `trigger_engine`). `apps/app` is a separate pnpm-managed Next.js
+project.
 
 ## Domain model
 
 The central object is `DACPRule` (see `packages/schemas/src/ankur_schemas/rule.py`). Every
-field except `district` and `condition` is nullable -- DACP documents are inconsistent in what
+field except `state`, `district`, and `condition` is nullable -- DACP documents are inconsistent in what
 they specify, and a missing value must stay `null` rather than being guessed:
 
 ```json
 {
   "fields": {
+    "state": "Haryana",
     "district": "Sirsa",
     "crop": "Pearl millet",
     "condition": "Normal onset followed by 15-20 day dry spell after sowing",

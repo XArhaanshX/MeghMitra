@@ -36,6 +36,13 @@ class RuleNotApprovableError(ValueError):
     pass
 
 
+UNBOUNDED_LIMIT = 1_000_000
+"""Effectively "no limit" sentinel for a repository fetch a service needs to
+finish filtering in Python before applying its own pagination -- `district`
+isn't a repository-level filter (see `ankur_domain.repositories`), and the
+trigger engine's candidate lookup must never have its eligible-rule set
+silently truncated by the default page size."""
+
 @dataclass(slots=True)
 class DocumentService:
     documents: DocumentRepository
@@ -49,8 +56,10 @@ class DocumentService:
             raise DocumentNotFoundError(str(document_id))
         return doc
 
-    async def list(self) -> list[DocumentMetadata]:
-        return await self.documents.list()
+    async def list(
+        self, *, state: str | None = None, limit: int = 50, offset: int = 0
+    ) -> list[DocumentMetadata]:
+        return await self.documents.list(state=state, limit=limit, offset=offset)
 
     async def add_pages(self, pages: list[DocumentPage]) -> None:
         await self.documents.add_pages(pages)
@@ -82,21 +91,50 @@ class RuleService:
         return rule
 
     async def list(
-        self, *, review_status: ReviewStatus | None = None, district: str | None = None
+        self,
+        *,
+        review_status: ReviewStatus | None = None,
+        district: str | None = None,
+        state: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
     ) -> list[DACPRule]:
-        rules = await self.rules.list(review_status=review_status.value if review_status else None)
-        if district is not None:
-            rules = [r for r in rules if r.fields.district == district]
-        return rules
+        review_status_value = review_status.value if review_status else None
+        if district is None:
+            return await self.rules.list(
+                review_status=review_status_value, state=state, limit=limit, offset=offset
+            )
+        # `district` isn't a repository-level filter: fetch every
+        # state/review_status-matching row unpaginated and filter+slice here,
+        # so an OFFSET/LIMIT applied before the district filter can't drop
+        # matching rows that happened to fall outside the raw page.
+        rules = await self.rules.list(
+            review_status=review_status_value, state=state, limit=UNBOUNDED_LIMIT, offset=0
+        )
+        rules = [r for r in rules if r.fields.district == district]
+        return rules[offset : offset + limit]
 
-    async def list_advisory_eligible(self, *, district: str | None = None) -> list[DACPRule]:
+    async def list_advisory_eligible(
+        self,
+        *,
+        district: str | None = None,
+        state: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[DACPRule]:
         """Rules the trigger engine is allowed to join on.
 
         Approved *and* cited — `is_advisory_eligible`, not confidence. A pending
         rule with high confidence must not appear here; an approved low-confidence
         rule that a human verified against the source page must.
         """
-        rules = await self.list(review_status=ReviewStatus.APPROVED, district=district)
+        rules = await self.list(
+            review_status=ReviewStatus.APPROVED,
+            district=district,
+            state=state,
+            limit=limit,
+            offset=offset,
+        )
         return [r for r in rules if is_advisory_eligible(r)]
 
     async def citation_for(self, rule_id: UUID) -> Citation:
@@ -152,8 +190,12 @@ class ReviewService:
         page = await self.documents.get_page(rule.document_id, rule.citation.page)
         return None if page is None else page.text
 
-    async def review_queue(self) -> list[DACPRule]:
-        return await self.rules.list(review_status=ReviewStatus.NEEDS_REVIEW.value)
+    async def review_queue(
+        self, *, state: str | None = None, limit: int = 50, offset: int = 0
+    ) -> list[DACPRule]:
+        return await self.rules.list(
+            review_status=ReviewStatus.NEEDS_REVIEW.value, state=state, limit=limit, offset=offset
+        )
 
     async def approve(self, rule_id: UUID, *, reviewed_by: str) -> DACPRule:
         rule = await self._get(rule_id)

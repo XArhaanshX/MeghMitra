@@ -1,4 +1,27 @@
 services:
+  # No `api` service is defined here yet -- this compose file currently only
+  # brings up Postgres for local dev (`make docker-up`); the API runs via
+  # `make dev` / `uvicorn` directly on the host. If/when an `api` service is
+  # added here, mount the DACP corpus rather than relying on the image (see
+  # apps/api/Dockerfile -- data/raw and data/processed are no longer baked
+  # in) with something like:
+  #
+  #   api:
+  #     build:
+  #       context: .
+  #       dockerfile: apps/api/Dockerfile
+  #     environment:
+  #       DATABASE_URL: postgresql://${POSTGRES_USER:-ankur}:${POSTGRES_PASSWORD:-ankur}@db:5432/${POSTGRES_DB:-ankur}
+  #       ANKUR_RAW_ROOT: ${ANKUR_RAW_ROOT:-data/raw}
+  #       ANKUR_CORPUS_ROOT: ${ANKUR_CORPUS_ROOT:-data/processed}
+  #     ports:
+  #       - "${API_PORT:-8000}:8000"
+  #     volumes:
+  #       - ./data/raw:/app/data/raw:ro
+  #       - ./data/processed:/app/data/processed:ro
+  #     depends_on:
+  #       db:
+  #         condition: service_healthy
   db:
     image: postgis/postgis:16-3.4
     restart: unless-stopped

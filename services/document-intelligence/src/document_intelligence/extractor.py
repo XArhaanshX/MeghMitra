@@ -198,6 +198,7 @@ def _fields_from_row(
     action = " | ".join(action_parts) if action_parts else None
 
     return DACPRuleFields(
+        state=document.state,
         district=document.district,
         block=_join_or_none(collected.get("block")),
         farming_situation=_join_or_none(collected.get("farming_situation")),
@@ -428,6 +429,7 @@ def _extract_from_lines(chunks: list[Chunk], document: DocumentMetadata) -> list
         if header_fields is not None:
             mapped = _map_row(chunk.columns, header_fields)
             fields = DACPRuleFields(
+                state=document.state,
                 district=document.district,
                 block=mapped.get("block"),
                 farming_situation=mapped.get("farming_situation"),
@@ -442,7 +444,9 @@ def _extract_from_lines(chunks: list[Chunk], document: DocumentMetadata) -> list
             )
             confidence, notes = score_draft(fields, had_header_context=True)
         else:
-            fields = DACPRuleFields(district=document.district, condition=chunk.text)
+            fields = DACPRuleFields(
+                state=document.state, district=document.district, condition=chunk.text
+            )
             confidence, notes = score_draft(fields, had_header_context=False)
             notes.append("no preceding header row recognized on this page")
 

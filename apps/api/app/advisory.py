@@ -17,7 +17,7 @@ from ankur_domain.repositories import (
     DocumentRepository,
     TriggerEventRepository,
 )
-from ankur_domain.services import RuleService
+from ankur_domain.services import UNBOUNDED_LIMIT, RuleService
 from ankur_schemas.advisory import Advisory, TriggerEvent
 from ankur_schemas.citation import Citation
 from ankur_schemas.condition import ConditionCode, DrySpellForecast, MoistureState
@@ -67,6 +67,7 @@ class AdvisoryEmissionService:
     async def evaluate(
         self,
         *,
+        state: str,
         district: str,
         moisture: MoistureState,
         forecast: DrySpellForecast,
@@ -79,8 +80,17 @@ class AdvisoryEmissionService:
         rejected, and uncited rows never reach `emit_advisory`. The probability
         cannot conjure a rule; a matched rule cannot fire without
         `can_emit_advisory` returning true.
+
+        `state` is caller-resolved (see `apps/api/app/routes/advisories.py`):
+        either given explicitly and validated via `ankur_geo.resolve_region`,
+        or the single state `ankur_geo.states_with_district_name` found for
+        `district` when it was unambiguous. It narrows the candidate rule set
+        (matters once two states publish a same-named district) and is
+        recorded on the audit trail (`TriggerEvent.payload["state"]`).
         """
-        candidates = await self.rules.list_advisory_eligible(district=district)
+        candidates = await self.rules.list_advisory_eligible(
+            district=district, state=state, limit=UNBOUNDED_LIMIT, offset=0
+        )
         detected = detect_condition(moisture)
         action, decision, rule, reasons = emit_advisory(
             moisture,
@@ -107,6 +117,7 @@ class AdvisoryEmissionService:
             reasons=reasons,
             payload={
                 "district": district,
+                "state": state,
                 "action": action.value,
                 "moisture": moisture.model_dump(mode="json"),
                 "forecast": forecast.model_dump(mode="json"),
@@ -143,8 +154,25 @@ class AdvisoryEmissionService:
             advisory=advisory,
         )
 
-    async def list_events(self) -> list[TriggerEvent]:
-        return await self.events.list()
+    async def list_events(
+        self, *, state: str | None = None, limit: int = 50, offset: int = 0
+    ) -> list[TriggerEvent]:
+        return await self.events.list(state=state, limit=limit, offset=offset)
 
-    async def list_advisories(self) -> list[Advisory]:
-        return await self.advisories.list()
+    async def list_advisories(
+        self, *, state: str | None = None, limit: int = 50, offset: int = 0
+    ) -> list[Advisory]:
+        # `Advisory` (see `ankur_schemas.advisory`) carries no geographic field
+        # of its own -- only `trigger_event_id`. Filtering by `state` means
+        # resolving the matching `TriggerEvent`s first (their `payload` does
+        # carry `state`/`district`, set in `evaluate()` above) and keeping
+        # only advisories that point at one of them.
+        advisories = await self.advisories.list()
+        if state is None:
+            return advisories[offset : offset + limit]
+        matching_event_ids = {
+            event.id
+            for event in await self.events.list(state=state, limit=UNBOUNDED_LIMIT, offset=0)
+        }
+        filtered = [a for a in advisories if a.trigger_event_id in matching_event_ids]
+        return filtered[offset : offset + limit]

@@ -1,13 +1,18 @@
-"""Load the Sirsa demo rule set through the real review chokepoint.
+"""Load DACP demo rule sets through the real review chokepoint.
 
-Drafts come from `data/fixtures/sirsa_demo_seed.json`. They are validated
+`seed_sirsa_demo` loads the flagship Haryana/Sirsa demo from
+`data/fixtures/sirsa_demo_seed.json`. `seed_multi_state_demo` generalises it:
+Haryana/Sirsa plus every state block in
+`data/fixtures/multi_state_demo_seed.json`. Both validate drafts
 (`document_intelligence.validator.validate_draft` — never `approved`) then
-moved to approved only via `ReviewService.approve`, with the source document's
-page_count attached so a citation past page 31 cannot sneak through.
+move to approved only via `ReviewService.approve`, with each source
+document's page_count attached so a citation past its last page cannot
+sneak through.
 
 CLI (API + Postgres running):
 
-    make seed
+    make seed               # Haryana/Sirsa only
+    make seed-multi-state   # Haryana/Sirsa + every other state fixture
 """
 
 from __future__ import annotations
@@ -32,18 +37,8 @@ from document_intelligence.validator import validate_draft
 logger = logging.getLogger("ankur.seed")
 
 FIXTURE_NAME = "sirsa_demo_seed.json"
-PDF_NAME = "HAR16-Sirsa-30-06-2011.pdf"
-PDF_CANDIDATE_DIRS = (
-    Path("data") / "raw" / "Haryana",
-    Path("data") / "raw",
-)
-"""Where the Sirsa plan may live, newest layout first.
-
-`scripts/download_dacp.py` files every plan under `data/raw/<State>/`, and the
-top-level copy this module used to point at was removed when that downloader
-landed. The old path is kept as a fallback for checkouts that still have it.
-Resolving instead of hard-coding is what stops this from silently breaking again
-the next time the corpus is reorganized."""
+MULTI_STATE_FIXTURE_NAME = "multi_state_demo_seed.json"
+"""Additional states beyond Haryana/Sirsa -- see `seed_multi_state_demo`."""
 
 DEMO_MARKER = "ankur-demo-seed"
 EXTRACTOR_VERSION = "demo-seed/0.1.0"
@@ -66,6 +61,10 @@ def _fixture_path() -> Path:
     return _repo_root() / "data" / "fixtures" / FIXTURE_NAME
 
 
+def _multi_state_fixture_path() -> Path:
+    return _repo_root() / "data" / "fixtures" / MULTI_STATE_FIXTURE_NAME
+
+
 @dataclass(frozen=True, slots=True)
 class SeedResult:
     document: DocumentMetadata
@@ -73,8 +72,21 @@ class SeedResult:
     skipped: int
 
 
+@dataclass(frozen=True, slots=True)
+class MultiStateSeedResult:
+    """Same shape as `SeedResult`, generalised to more than one document/state."""
+
+    documents: list[DocumentMetadata]
+    approved: list[DACPRule]
+    skipped: int
+
+
 def _load_fixture() -> dict:
     return json.loads(_fixture_path().read_text(encoding="utf-8"))
+
+
+def _load_multi_state_fixture() -> dict:
+    return json.loads(_multi_state_fixture_path().read_text(encoding="utf-8"))
 
 
 async def seed_sirsa_demo(
@@ -116,6 +128,104 @@ async def seed_sirsa_demo(
     return SeedResult(document=document, approved=approved, skipped=0)
 
 
+async def seed_multi_state_demo(
+    *,
+    documents: DocumentService,
+    rules: RuleService,
+    review: ReviewService,
+    reviewed_by: str = "demo-seed",
+) -> MultiStateSeedResult:
+    """Multi-state generalisation of `seed_sirsa_demo`.
+
+    Seeds Haryana/Sirsa from `data/fixtures/sirsa_demo_seed.json` -- the same
+    file `seed_sirsa_demo` reads -- plus every additional state block in
+    `data/fixtures/multi_state_demo_seed.json` (currently Nagaland/Dimapur and
+    Manipur/Mpur Imphal East, both short real plans so in-range citations are
+    easy to verify by hand). Haryana is intentionally not duplicated into the
+    multi-state fixture.
+
+    This deliberately does NOT call `seed_sirsa_demo` for the Haryana leg.
+    That function's idempotency check is repo-wide ("does *any* rule carry
+    DEMO_MARKER?"), which only stays correct as long as a single demo
+    document ever exists in the repository. Once this function's other
+    states also tag their rows with DEMO_MARKER, a repo-wide check would
+    treat any one already-seeded state as proof every other state is seeded
+    too. `_seed_document_rules` below applies the same idempotency pattern
+    (and the same `ReviewService.approve` chokepoint, and the same
+    never-self-approve safety check) scoped to one document at a time
+    instead, so re-running this function only skips documents that are
+    actually already seeded.
+    """
+    fixture_blocks = [_load_fixture(), *_load_multi_state_fixture()["states"]]
+
+    seeded_documents: list[DocumentMetadata] = []
+    approved: list[DACPRule] = []
+    skipped = 0
+
+    for block in fixture_blocks:
+        document, block_approved, block_skipped = await _seed_document_rules(
+            block["document"],
+            block["drafts"],
+            documents=documents,
+            rules=rules,
+            review=review,
+            reviewed_by=reviewed_by,
+        )
+        seeded_documents.append(document)
+        approved.extend(block_approved)
+        skipped += block_skipped
+
+    return MultiStateSeedResult(documents=seeded_documents, approved=approved, skipped=skipped)
+
+
+async def _seed_document_rules(
+    fixture_document: dict,
+    fixture_drafts: list[dict],
+    *,
+    documents: DocumentService,
+    rules: RuleService,
+    review: ReviewService,
+    reviewed_by: str,
+) -> tuple[DocumentMetadata, list[DACPRule], int]:
+    """Per-document seed loop shared by `seed_multi_state_demo`'s state blocks.
+
+    Idempotent per document (`document_id` + `DEMO_MARKER`), unlike
+    `seed_sirsa_demo`'s repo-wide check -- see `seed_multi_state_demo`'s
+    docstring for why that distinction matters once multiple demo documents
+    share a repository.
+    """
+    document = await _ensure_document(documents, fixture_document)
+    await _ensure_pages(documents, document)
+
+    existing = [
+        rule
+        for rule in await rules.list()
+        if rule.document_id == document.id and DEMO_MARKER in rule.notes
+    ]
+    if existing:
+        return document, existing, len(existing)
+
+    approved: list[DACPRule] = []
+    now = datetime.now(UTC)
+    for raw in fixture_drafts:
+        draft = DACPRuleDraft(
+            document_id=document.id,
+            fields=DACPRuleFields(**raw["fields"]),
+            citation=Citation(**raw["citation"]),
+            confidence=raw["confidence"],
+            extractor_version=EXTRACTOR_VERSION,
+            extracted_at=now,
+            notes=[DEMO_MARKER],
+        )
+        validated = validate_draft(draft)
+        if validated.review_status == ReviewStatus.APPROVED:
+            raise RuntimeError("demo seed must not self-approve; validate_draft assigned approved")
+        stored = (await rules.record_extracted([validated]))[0]
+        approved.append(await review.approve(stored.id, reviewed_by=reviewed_by))
+
+    return document, approved, 0
+
+
 async def _existing_document(documents: DocumentService) -> DocumentMetadata:
     matches = [d for d in await documents.list() if d.filename == "HAR16-Sirsa-30-06-2011.pdf"]
     if not matches:
@@ -133,18 +243,46 @@ async def _ensure_document(documents: DocumentService, meta: dict) -> DocumentMe
             district=meta["district"],
             state=meta["state"],
             page_count=meta["page_count"],
-            sha256=_pdf_sha256(),
+            sha256=_pdf_sha256(meta["filename"], meta["state"]),
             status=DocumentStatus.REGISTERED,
             registered_at=datetime.now(UTC),
         )
     )
 
 
-def _pdf_path() -> Path | None:
-    """Locate the Sirsa plan, or None if this checkout has not downloaded it."""
-    root = _repo_root()
-    for directory in PDF_CANDIDATE_DIRS:
-        candidate = root / directory / PDF_NAME
+def _raw_root() -> Path:
+    """Base directory for DACP source PDFs.
+
+    `ANKUR_RAW_ROOT` (`app.config.Settings.ankur_raw_root`, default
+    `"data/raw"`) so a container can point this at a mounted volume instead
+    of a baked-in copy -- see apps/api/Dockerfile. A relative value resolves
+    against the repo root; an absolute value (e.g. a mount path) is used
+    as-is.
+    """
+    from app.config import get_settings
+
+    raw_root = Path(get_settings().ankur_raw_root)
+    return raw_root if raw_root.is_absolute() else _repo_root() / raw_root
+
+
+def _pdf_candidate_dirs(state: str) -> tuple[Path, ...]:
+    """Where a state's DACP plans may live under `_raw_root()`, newest layout first.
+
+    `scripts/download_dacp.py` files every plan under `<raw_root>/<State>/`
+    (state name, spaces replaced with underscores). A flat top-level
+    `<raw_root>/` is kept as a fallback for checkouts predating that
+    downloader (e.g. the Sirsa plan, tracked directly at `data/raw/`).
+    Resolving instead of hard-coding one directory is what stops this from
+    silently breaking again the next time the corpus is reorganized.
+    """
+    raw_root = _raw_root()
+    return (raw_root / state.replace(" ", "_"), raw_root)
+
+
+def _pdf_path(filename: str, state: str) -> Path | None:
+    """Locate a DACP plan's PDF by filename, or None if this checkout hasn't downloaded it."""
+    for directory in _pdf_candidate_dirs(state):
+        candidate = directory / filename
         if candidate.exists():
             return candidate
     return None
@@ -154,7 +292,7 @@ async def _ensure_pages(documents: DocumentService, document: DocumentMetadata) 
     """Attach real PDF page text so citation re-check and GET /pages work."""
     if await documents.list_pages(document.id):
         return
-    pdf_path = _pdf_path()
+    pdf_path = _pdf_path(document.filename, document.state)
     if pdf_path is None:
         # Loud, because the consequence is silent and specific: without page text
         # `citation_appears_on_page` cannot verify anything, so it returns
@@ -163,8 +301,8 @@ async def _ensure_pages(documents: DocumentService, document: DocumentMetadata) 
         logger.warning(
             "%s not found under %s; seeding without page text, so citation "
             "snippets will NOT be verified against the source page",
-            PDF_NAME,
-            " or ".join(str(directory) for directory in PDF_CANDIDATE_DIRS),
+            document.filename,
+            " or ".join(str(directory) for directory in _pdf_candidate_dirs(document.state)),
         )
         return
     _, pages = load_document(pdf_path, district=document.district, state=document.state)
@@ -172,14 +310,14 @@ async def _ensure_pages(documents: DocumentService, document: DocumentMetadata) 
     await documents.add_pages(remapped)
 
 
-def _pdf_sha256() -> str | None:
-    pdf_path = _pdf_path()
+def _pdf_sha256(filename: str, state: str) -> str | None:
+    pdf_path = _pdf_path(filename, state)
     if pdf_path is None:
         return None
     return hashlib.sha256(pdf_path.read_bytes()).hexdigest()
 
 
-async def _seed_postgres() -> SeedResult:
+async def _seed_postgres(*, multi_state: bool) -> SeedResult | MultiStateSeedResult:
     from app.config import get_settings
     from app.db import (
         PostgresDocumentRepository,
@@ -192,11 +330,15 @@ async def _seed_postgres() -> SeedResult:
     try:
         doc_repo = PostgresDocumentRepository(pool)
         rule_repo = PostgresRuleRepository(pool)
-        result = await seed_sirsa_demo(
-            documents=DocumentService(documents=doc_repo),
-            rules=RuleService(rules=rule_repo),
-            review=ReviewService(rules=rule_repo, documents=doc_repo),
-        )
+        documents = DocumentService(documents=doc_repo)
+        rule_service = RuleService(rules=rule_repo)
+        review = ReviewService(rules=rule_repo, documents=doc_repo)
+        if multi_state:
+            result: SeedResult | MultiStateSeedResult = await seed_multi_state_demo(
+                documents=documents, rules=rule_service, review=review
+            )
+        else:
+            result = await seed_sirsa_demo(documents=documents, rules=rule_service, review=review)
     finally:
         await pool.close()
     return result
@@ -204,14 +346,32 @@ async def _seed_postgres() -> SeedResult:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
-    parser = argparse.ArgumentParser(description="Seed cited Sirsa demo rules via ReviewService.")
-    parser.parse_args()
-    result = asyncio.run(_seed_postgres())
-    print(f"document={result.document.id} approved={len(result.approved)} skipped={result.skipped}")
+    parser = argparse.ArgumentParser(description="Seed cited DACP demo rules via ReviewService.")
+    parser.add_argument(
+        "--multi-state",
+        action="store_true",
+        help=(
+            "Seed Haryana/Sirsa plus the additional states in "
+            "multi_state_demo_seed.json (default: Haryana/Sirsa only)."
+        ),
+    )
+    args = parser.parse_args()
+    result = asyncio.run(_seed_postgres(multi_state=args.multi_state))
+    if isinstance(result, MultiStateSeedResult):
+        states = sorted({rule.fields.state for rule in result.approved})
+        print(
+            f"documents={len(result.documents)} states={states} "
+            f"approved={len(result.approved)} skipped={result.skipped}"
+        )
+    else:
+        print(
+            f"document={result.document.id} approved={len(result.approved)} "
+            f"skipped={result.skipped}"
+        )
     for rule in result.approved:
         print(
-            f"  {rule.fields.condition_code} p{rule.citation.page} "
-            f"{rule.review_status.value} {rule.fields.crop}"
+            f"  {rule.fields.state}/{rule.fields.district} {rule.fields.condition_code} "
+            f"p{rule.citation.page} {rule.review_status.value} {rule.fields.crop}"
         )
 
 

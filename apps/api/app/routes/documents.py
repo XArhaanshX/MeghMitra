@@ -6,10 +6,10 @@ from uuid import UUID
 from ankur_domain.services import DocumentNotFoundError, DocumentService, PageNotFoundError
 from ankur_schemas.document import DocumentMetadata, DocumentPage
 from ankur_schemas.rule import DACPRule
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from app.deps import get_document_service, get_ingestion_service
+from app.deps import get_document_service, get_ingestion_service, paginated
 from app.ingestion import IngestionService
 
 router = APIRouter(tags=["documents"])
@@ -30,9 +30,14 @@ class IngestResponse(BaseModel):
 
 @router.get("/documents")
 async def list_documents(
+    state: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=200),
+    offset: int | None = Query(default=None, ge=0),
     service: DocumentService = Depends(get_document_service),
-) -> list[DocumentMetadata]:
-    return await service.list()
+) -> list[DocumentMetadata] | dict[str, object]:
+    return await paginated(
+        lambda **kw: service.list(state=state, **kw), limit=limit, offset=offset
+    )
 
 
 @router.get("/documents/{document_id}")
