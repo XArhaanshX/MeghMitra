@@ -23,7 +23,8 @@ export function ReviewCard({ rule }: ReviewCardProps) {
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
           <p className="font-mono text-xs font-bold tracking-widest text-teal-deep uppercase">
-            {fields.crop ?? 'Crop not specified'}
+            {fields.state} / {fields.district}
+            {fields.crop ? ` \u2014 ${fields.crop}` : ' \u2014 crop not specified'}
           </p>
           <CardTitle className="text-lg text-ink">{fields.condition}</CardTitle>
           <p className="font-mono text-sm text-ink-muted">

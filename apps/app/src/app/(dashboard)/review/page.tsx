@@ -6,6 +6,16 @@ import { getQueryClient } from '@/lib/query';
 
 import { ReviewQueueList } from './_components/review-queue-list';
 
+// Same static-prerender trap as the home page -- the SSR prefetch here uses
+// react-query's hydration boundary rather than plain `fetch()`, so Next
+// never detects it as dynamic either. Client-side react-query would
+// eventually self-heal (staleTime is 60s and the baked snapshot's
+// `dataUpdatedAt` is from build time), but that still means every page load
+// briefly shows a build-time-stale queue before the background refetch
+// lands -- wrong for a page whose entire purpose is showing live moderation
+// state. Force per-request rendering instead.
+export const dynamic = 'force-dynamic';
+
 export default async function ReviewPage() {
   const queryClient = getQueryClient();
   await queryClient.prefetchQuery({ queryKey: reviewKeys.lists(), queryFn: reviewQueue });

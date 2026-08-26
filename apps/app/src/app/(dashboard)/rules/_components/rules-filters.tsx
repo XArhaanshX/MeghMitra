@@ -33,9 +33,13 @@ export const rulesFilterParsers = {
 export function RulesFilters() {
   const [filters, setFilters] = useQueryStates(rulesFilterParsers);
   const { data: states, isPending: statesPending } = useStates();
-  const { data: districts, isPending: districtsPending } = useStateDistricts(
-    filters.state ?? undefined
-  );
+  // `/geo/states/{state_code}/districts` takes the state's short code, not
+  // its display name -- `filters.state` (and the Select's `value`) is the
+  // name, since that's what `GET /rules?state=` and the DACPRuleFields
+  // themselves use. Resolve name -> code here rather than changing what the
+  // rest of the filter/URL contract stores.
+  const selectedStateCode = states?.find(state => state.name === filters.state)?.state_code;
+  const { data: districts, isPending: districtsPending } = useStateDistricts(selectedStateCode);
 
   return (
     <div className="flex flex-wrap items-end gap-4">

@@ -14,6 +14,7 @@ export function RuleFields({ fields }: RuleFieldsProps) {
         <ConditionCodeBadge code={fields.condition_code} />
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <NullField label="State" value={fields.state} />
         <NullField label="District" value={fields.district} />
         <NullField label="Block" value={fields.block} />
         <NullField label="Farming situation" value={fields.farming_situation} />

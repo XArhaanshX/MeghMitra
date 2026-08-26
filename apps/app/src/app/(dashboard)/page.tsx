@@ -8,6 +8,13 @@ import { cn } from '@/lib/utils';
 
 import { NationalCoverage } from './_components/national-coverage';
 
+// Server-fetched via axios (not Next's `fetch()`), so Next's automatic
+// dynamic-API detection never sees these calls and happily prerenders this
+// page as static HTML at build time -- baking in whatever the API returned
+// (or, in CI, couldn't return) at that moment forever. Force per-request
+// rendering so the counts and NationalCoverage panel are always live.
+export const dynamic = 'force-dynamic';
+
 // Never let a down API crash the landing page -- the shell's health pill
 // already communicates that; the counts just fall back to a dash.
 async function safeCount<T>(fetchList: () => Promise<T[]>): Promise<number | null> {
