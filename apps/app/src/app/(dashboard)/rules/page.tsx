@@ -1,42 +1,30 @@
+import type { SearchParams } from 'nuqs/server';
 import { dehydrate, HydrationBoundary } from '@tanstack/react-query';
 
-import { listRules, ruleKeys } from '@/api/rules';
 import { PageHeader } from '@/components/shared';
 import { getQueryClient } from '@/lib/query';
-import { reviewStatusSchema } from '@/schemas';
 
 import { RulesFilters } from './_components/rules-filters';
+import { loadRulesFilters, rulesPageQuery } from './_components/rules-query';
 import { RulesTable } from './_components/rules-table';
 
 interface RulesPageProps {
-  searchParams: Promise<{
-    review_status?: string;
-    state?: string;
-    district?: string;
-    advisory_eligible?: string;
-  }>;
+  searchParams: Promise<SearchParams>;
 }
 
 export default async function RulesPage({ searchParams }: RulesPageProps) {
-  const params = await searchParams;
-  // No default -- omitted state/district means every state, matching the
-  // API's own contract. The dashboard's default view is India, not Haryana.
-  const state = params.state;
-  const district = params.district;
-  const advisoryEligible = params.advisory_eligible === 'true' ? true : undefined;
-  const reviewStatus = reviewStatusSchema.safeParse(params.review_status).data;
+  // Parsed with the same parser map the client filter bar uses, so the
+  // prefetched cache entry lands on exactly the key the table asks for.
+  const filters = await loadRulesFilters(searchParams);
 
   const queryClient = getQueryClient();
-  await queryClient.prefetchQuery({
-    queryKey: ruleKeys.list({ reviewStatus, state, district, advisoryEligible }),
-    queryFn: () => listRules({ reviewStatus, state, district, advisoryEligible }),
-  });
+  await queryClient.prefetchQuery(rulesPageQuery(filters));
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 px-6 py-12">
+    <div className="mx-auto w-full max-w-6xl space-y-6 px-6 py-10 sm:px-8 lg:py-14">
       <PageHeader
         title="Rules"
-        description="Pre-approved DACP contingency actions retrieved from source documents, across every ingested state."
+        description="Contingency actions extracted verbatim from District Agriculture Contingency Plans. Every state with an ingested plan is included; filter to narrow the list."
       />
       <RulesFilters />
       <HydrationBoundary state={dehydrate(queryClient)}>

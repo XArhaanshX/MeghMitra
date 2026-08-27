@@ -25,7 +25,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'Ankur',
   description:
-    'DACP contingency retrieval across India -- pre-approved government actions only, never generates advice.',
+    'Retrieval of pre-approved District Agriculture Contingency Plan actions across India, with a source citation for every recommendation.',
 };
 
 export default function RootLayout({

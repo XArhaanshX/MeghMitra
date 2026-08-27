@@ -77,7 +77,7 @@ export function RejectDialog({ ruleId }: RejectDialogProps) {
           </div>
           <DialogFooter>
             <Button type="submit" variant="destructive" disabled={rejectRule.isPending}>
-              {rejectRule.isPending ? 'Rejecting…' : 'Confirm rejection'}
+              {rejectRule.isPending ? 'Rejecting' : 'Confirm rejection'}
             </Button>
           </DialogFooter>
         </form>

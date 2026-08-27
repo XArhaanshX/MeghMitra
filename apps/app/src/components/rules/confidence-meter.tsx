@@ -18,7 +18,7 @@ export function ConfidenceMeter({ confidence, variant = 'compact' }: ConfidenceM
     return (
       <div className="space-y-1.5" aria-label={`${pct}% confidence`}>
         <p className="font-mono text-xs font-bold tracking-widest text-ink-soft uppercase">
-          Confidence — {pct}%
+          Extractor confidence {pct}%
         </p>
         <div className="h-3 w-full overflow-hidden rounded-full border-2 border-ink bg-sand-50">
           <div className={cn('h-full', fillColor)} style={{ width: `${pct}%` }} />

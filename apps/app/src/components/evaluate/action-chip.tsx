@@ -22,8 +22,9 @@ const CLASS: Record<AdvisoryAction, string> = {
 
 export function ActionChip({ action }: ActionChipProps) {
   return (
+    // No role="status" here: the result panel is already a single polite live
+    // region, and a nested one makes screen readers announce twice.
     <span
-      role="status"
       className={cn(
         'inline-flex items-center rounded-sm border-2 px-4 py-1.5 font-mono text-lg font-bold tracking-widest uppercase',
         CLASS[action]

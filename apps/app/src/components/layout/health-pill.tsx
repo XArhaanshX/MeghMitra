@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 export function HealthPill() {
   const { data, isError, isPending } = useHealth();
   const isUp = !isPending && !isError && data?.status === 'ok';
-  const label = isPending ? 'Checking API…' : isUp ? 'API online' : 'API unreachable';
+  const label = isPending ? 'Checking API' : isUp ? 'API online' : 'API unreachable';
 
   return (
     <span

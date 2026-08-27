@@ -37,21 +37,23 @@ const DRY_SPELL_BODY: EvaluateRequest = {
 export const EVALUATE_PRESETS: EvaluatePreset[] = [
   {
     id: 'dry-spell-after-sowing',
-    label: 'Dry spell after sowing (flagship)',
+    label: 'Dry spell after sowing',
     description:
-      "Sown, 17 dry days (in the plan's 15-20 day band) -> expect RE-SOW, Pearl millet, page 9.",
+      "Sown 10 days ago, then 17 dry days, inside the plan's stated 15 to 20 day band. An approved rule covers this, so expect a re-sow recommendation citing page 9.",
     request: DRY_SPELL_BODY,
   },
   {
     id: 'not-sown',
     label: 'Same weather, not sown',
-    description: 'Identical moisture, crop not yet sown -> expect WAIT.',
+    description:
+      'Identical soil moisture, but the crop is not in the ground yet. The recommendation changes to wait, because the rule that fires depends on crop stage.',
     request: { ...DRY_SPELL_BODY, crop_already_sown: false },
   },
   {
     id: 'ordinary-weather',
     label: 'Ordinary weather',
-    description: 'Wet, no dry spell -> expect ABSTAIN, "no condition detected".',
+    description:
+      'Wet soil, no dry spell. No condition is detected, so the system stays silent rather than finding something to say.',
     request: {
       state: 'Haryana',
       district: 'Sirsa',
@@ -71,8 +73,9 @@ export const EVALUATE_PRESETS: EvaluatePreset[] = [
   },
   {
     id: 'other-district',
-    label: 'Other district (Hisar)',
-    description: 'Same dry-spell weather outside Sirsa -> expect ABSTAIN, no rule leak.',
+    label: 'Neighbouring district',
+    description:
+      'The same dry-spell weather, moved to Hisar, where no plan has been approved. Nothing is borrowed from Sirsa next door, so the system abstains.',
     request: {
       ...DRY_SPELL_BODY,
       state: 'Haryana',
@@ -83,8 +86,9 @@ export const EVALUATE_PRESETS: EvaluatePreset[] = [
   },
   {
     id: 'delayed-onset',
-    label: 'Delayed onset',
-    description: 'Not yet sown, 25-day onset delay, otherwise mild.',
+    label: 'Delayed monsoon onset',
+    description:
+      'Onset 25 days late, past the 21-day threshold, crop not yet sown. The condition is detected and a cited rule exists, but no decision model covers this condition yet, so the system says so instead of acting.',
     request: {
       state: 'Haryana',
       district: 'Sirsa',
@@ -104,11 +108,9 @@ export const EVALUATE_PRESETS: EvaluatePreset[] = [
   },
   {
     id: 'cross-state-collision-check',
-    label: 'Cross-state isolation (Bijapur, Chhattisgarh)',
+    label: 'Duplicate district name',
     description:
-      'Bijapur exists in both Karnataka and Chhattisgarh -- passing state disambiguates ' +
-      'which government plan is retrieved. Without a district-name collision fix, this ' +
-      "request could have silently returned Karnataka's rules instead.",
+      'Bijapur exists in both Karnataka and Chhattisgarh. Naming the state is what decides which plan is read, so a Chhattisgarh request can never be answered with Karnataka government actions.',
     request: {
       state: 'Chhattisgarh',
       district: 'Bijapur',

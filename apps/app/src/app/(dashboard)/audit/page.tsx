@@ -1,8 +1,6 @@
 import { PageHeader } from '@/components/shared';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-import { AdvisoriesTab } from './_components/advisories-tab';
-import { TriggerEventsTab } from './_components/trigger-events-tab';
+import { AuditTabs } from './_components/audit-tabs';
 
 interface AuditPageProps {
   searchParams: Promise<{ trigger_event_id?: string }>;
@@ -10,26 +8,17 @@ interface AuditPageProps {
 
 export default async function AuditPage({ searchParams }: AuditPageProps) {
   const { trigger_event_id } = await searchParams;
-  const defaultTab = trigger_event_id ? 'trigger-events' : 'advisories';
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 px-6 py-12">
+    <div className="mx-auto w-full max-w-5xl space-y-6 px-6 py-10 sm:px-8 lg:py-14">
       <PageHeader
         title="Audit"
-        description="Advisories are what Ankur said. Trigger events are every evaluation, including silent abstains."
+        description="Advisories issued are what the system said out loud. All evaluations includes the ones where it stayed silent, so a withheld recommendation is as traceable as a given one."
       />
-      <Tabs defaultValue={defaultTab}>
-        <TabsList>
-          <TabsTrigger value="advisories">Advisories</TabsTrigger>
-          <TabsTrigger value="trigger-events">Trigger events</TabsTrigger>
-        </TabsList>
-        <TabsContent value="advisories">
-          <AdvisoriesTab />
-        </TabsContent>
-        <TabsContent value="trigger-events">
-          <TriggerEventsTab highlightId={trigger_event_id} />
-        </TabsContent>
-      </Tabs>
+      <AuditTabs
+        highlightId={trigger_event_id}
+        fallbackTab={trigger_event_id ? 'trigger-events' : 'advisories'}
+      />
     </div>
   );
 }

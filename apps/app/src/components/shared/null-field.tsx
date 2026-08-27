@@ -24,7 +24,7 @@ export function NullField({ label, value }: NullFieldProps) {
           value ? 'font-bold text-ink' : 'text-ink-soft italic'
         )}
       >
-        {value ?? 'not specified'}
+        {value ?? 'Not in source'}
       </p>
     </div>
   );

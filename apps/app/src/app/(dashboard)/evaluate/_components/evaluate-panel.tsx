@@ -11,7 +11,12 @@ export function EvaluatePanel() {
   return (
     <div className="space-y-8">
       <EvaluateForm onResult={setResult} />
-      {result && <EvaluateResult result={result} />}
+      {/* One polite live region around the whole result: submitting replaces
+          content far below the button, which a screen reader would otherwise
+          never announce. */}
+      <section aria-live="polite" aria-label="Evaluation result">
+        {result && <EvaluateResult result={result} />}
+      </section>
     </div>
   );
 }

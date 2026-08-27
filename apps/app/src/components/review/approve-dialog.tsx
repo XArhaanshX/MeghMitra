@@ -75,7 +75,7 @@ export function ApproveDialog({ ruleId, disabled }: ApproveDialogProps) {
           </div>
           <DialogFooter>
             <Button type="submit" disabled={approveRule.isPending}>
-              {approveRule.isPending ? 'Approving…' : 'Confirm approval'}
+              {approveRule.isPending ? 'Approving' : 'Confirm approval'}
             </Button>
           </DialogFooter>
         </form>

@@ -25,7 +25,7 @@ export function CitationPanel({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        {isLoading && <p className="text-sm text-ink-muted">Loading citation…</p>}
+        {isLoading && <p className="text-sm text-ink-muted">Loading citation</p>}
         {!isLoading && (!citation || !hasValidCitation(citation)) && (
           <p className="text-sm text-ink-muted">No valid citation on file.</p>
         )}
