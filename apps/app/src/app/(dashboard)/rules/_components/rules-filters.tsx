@@ -81,8 +81,12 @@ export function RulesFilters() {
               })
             }
           >
+            {/* Explicit children rather than letting Radix resolve the
+                selected item's text: the items live in SelectContent, which
+                is not mounted until the menu opens, so before the first open
+                the trigger would otherwise display the raw value ("all"). */}
             <SelectTrigger id="rules-state" className="w-56" disabled={statesPending}>
-              <SelectValue placeholder="All states" />
+              <SelectValue>{filters.state ?? 'All states'}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL_VALUE}>All states</SelectItem>
@@ -107,7 +111,9 @@ export function RulesFilters() {
             disabled={!filters.state || districtsPending}
           >
             <SelectTrigger id="rules-district" className="w-56">
-              <SelectValue placeholder={filters.state ? 'All districts' : 'Choose a state first'} />
+              <SelectValue>
+                {filters.district ?? (filters.state ? 'All districts' : 'Choose a state first')}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL_VALUE}>All districts</SelectItem>
@@ -133,7 +139,9 @@ export function RulesFilters() {
             }}
           >
             <SelectTrigger id="rules-status" className="w-48">
-              <SelectValue placeholder="All statuses" />
+              <SelectValue>
+                {filters.review_status ? REVIEW_STATUS_LABEL[filters.review_status] : 'All statuses'}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL_VALUE}>All statuses</SelectItem>
