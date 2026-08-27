@@ -12,6 +12,7 @@ deployment (Postgres in production, in-memory in tests).
 
 from __future__ import annotations
 
+import asyncio
 import time
 from collections import Counter, defaultdict
 
@@ -127,6 +128,13 @@ async def list_state_districts(state_code: str) -> list[DistrictSummary]:
 # on every request removes the repeated full-corpus fetch entirely.
 _COVERAGE_CACHE_TTL_SECONDS = 30.0
 _coverage_cache: tuple[float, CoverageResponse] | None = None
+# Concurrent requests during a cold/expired cache must not each independently
+# re-fetch the full corpus (a stampede is exactly what still OOM'd the pod
+# after the TTL cache alone: several polling requests can land within the
+# same event-loop tick before any of them has written `_coverage_cache`).
+# This lock makes every request past the first one during a recompute wait
+# for that single in-flight computation instead of starting its own.
+_coverage_lock = asyncio.Lock()
 
 
 @router.get("/coverage")
@@ -135,37 +143,51 @@ async def get_coverage(
     rules_service: RuleService = Depends(get_rule_service),
 ) -> CoverageResponse:
     global _coverage_cache
-    now = time.monotonic()
-    if _coverage_cache is not None:
+
+    def _fresh() -> CoverageResponse | None:
+        if _coverage_cache is None:
+            return None
         cached_at, cached_response = _coverage_cache
-        if now - cached_at < _COVERAGE_CACHE_TTL_SECONDS:
+        if time.monotonic() - cached_at < _COVERAGE_CACHE_TTL_SECONDS:
             return cached_response
+        return None
 
-    # Mirrors `trigger_engine.rulestore.RuleStore.coverage()`'s semantics
-    # exactly, but reads the persisted document/rule repositories directly
-    # instead of re-scanning `data/processed/` from disk on every request.
-    documents = await documents_service.list(limit=UNBOUNDED_LIMIT, offset=0)
-    rules = await rules_service.list(limit=UNBOUNDED_LIMIT, offset=0)
+    cached = _fresh()
+    if cached is not None:
+        return cached
 
-    by_code: Counter[str] = Counter(
-        (rule.fields.condition_code or ConditionCode.UNMAPPED).value for rule in rules
-    )
-    by_review_status: Counter[str] = Counter(rule.review_status.value for rule in rules)
+    async with _coverage_lock:
+        # Re-check: another request may have just finished recomputing while
+        # this one was waiting for the lock.
+        cached = _fresh()
+        if cached is not None:
+            return cached
 
-    district_states: dict[str, set[str]] = defaultdict(set)
-    for document in documents:
-        district_states[district_key(document.district)].add(state_key(document.state))
-    collisions = sum(1 for states in district_states.values() if len(states) > 1)
+        # Mirrors `trigger_engine.rulestore.RuleStore.coverage()`'s semantics
+        # exactly, but reads the persisted document/rule repositories directly
+        # instead of re-scanning `data/processed/` from disk on every request.
+        documents = await documents_service.list(limit=UNBOUNDED_LIMIT, offset=0)
+        rules = await rules_service.list(limit=UNBOUNDED_LIMIT, offset=0)
 
-    response = CoverageResponse(
-        documents=len(documents),
-        rules=len(rules),
-        approved_rules=sum(1 for r in rules if r.review_status == ReviewStatus.APPROVED),
-        unmapped_rules=by_code.get(ConditionCode.UNMAPPED.value, 0),
-        districts=len(district_states),
-        district_name_collisions=collisions,
-        by_code=dict(by_code),
-        by_review_status=dict(by_review_status),
-    )
-    _coverage_cache = (now, response)
-    return response
+        by_code: Counter[str] = Counter(
+            (rule.fields.condition_code or ConditionCode.UNMAPPED).value for rule in rules
+        )
+        by_review_status: Counter[str] = Counter(rule.review_status.value for rule in rules)
+
+        district_states: dict[str, set[str]] = defaultdict(set)
+        for document in documents:
+            district_states[district_key(document.district)].add(state_key(document.state))
+        collisions = sum(1 for states in district_states.values() if len(states) > 1)
+
+        response = CoverageResponse(
+            documents=len(documents),
+            rules=len(rules),
+            approved_rules=sum(1 for r in rules if r.review_status == ReviewStatus.APPROVED),
+            unmapped_rules=by_code.get(ConditionCode.UNMAPPED.value, 0),
+            districts=len(district_states),
+            district_name_collisions=collisions,
+            by_code=dict(by_code),
+            by_review_status=dict(by_review_status),
+        )
+        _coverage_cache = (time.monotonic(), response)
+        return response
