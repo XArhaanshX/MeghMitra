@@ -80,14 +80,22 @@ def download_one(entry: dict[str, str], dest_root: Path) -> tuple[str, str]:
     tmp = dest.with_suffix(dest.suffix + ".part")
 
     def try_fetch(url: str) -> bool:
-        subprocess.run(
-            [
-                "curl", "-sL", "--max-time", "45", "--retry", "2", "--retry-delay", "1",
-                "-A", USER_AGENT, "-o", str(tmp), quote(url, safe=":/%?&=,;+@")
-            ],
-            timeout=60,
-            check=False,
-        )
+        try:
+            subprocess.run(
+                [
+                    "curl", "-sL", "--max-time", "45", "--retry", "2", "--retry-delay", "1",
+                    "-A", USER_AGENT, "-o", str(tmp), quote(url, safe=":/%?&=,;+@")
+                ],
+                timeout=60,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            # curl's own --max-time should make this rare, but a hung/very slow
+            # connection (e.g. cluster egress to a specific host) can still outlive
+            # the outer subprocess timeout -- one bad file must not crash the whole
+            # ThreadPoolExecutor batch (see the icar-crida.res.in cluster-egress
+            # timeout this was written for).
+            return False
         return tmp.exists() and tmp.stat().st_size > 1000 and tmp.read_bytes()[:4] == b"%PDF"
 
     url = entry["url"]
