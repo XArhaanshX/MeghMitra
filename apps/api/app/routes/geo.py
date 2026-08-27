@@ -12,6 +12,7 @@ deployment (Postgres in production, in-memory in tests).
 
 from __future__ import annotations
 
+import time
 from collections import Counter, defaultdict
 
 from ankur_domain.services import UNBOUNDED_LIMIT, DocumentService, RuleService
@@ -112,11 +113,34 @@ async def list_state_districts(state_code: str) -> list[DistrictSummary]:
     ]
 
 
+# `/coverage` deserializes every extracted_rule's full JSONB payload
+# (fields/citation/notes) just to compute two Counters -- at the demo-seed
+# scale (~180 rows) that was free; at the full India corpus (~9.4k rows,
+# see docs/document-intelligence.md ingestion) a polling frontend hitting
+# this on every page load repeatedly re-fetches and re-deserializes the
+# entire corpus, which OOM'd the API pod in production (2026-08-28). A
+# proper fix is a SQL-side COUNT/GROUP BY repository method (through the
+# `RuleRepository` Protocol, implemented in both the memory and Postgres
+# repos per this repo's convention -- real feature work, not done here).
+# This TTL cache is the minimal fix: the aggregate only needs to be
+# eventually-consistent, so recomputing at most once every 30s instead of
+# on every request removes the repeated full-corpus fetch entirely.
+_COVERAGE_CACHE_TTL_SECONDS = 30.0
+_coverage_cache: tuple[float, CoverageResponse] | None = None
+
+
 @router.get("/coverage")
 async def get_coverage(
     documents_service: DocumentService = Depends(get_document_service),
     rules_service: RuleService = Depends(get_rule_service),
 ) -> CoverageResponse:
+    global _coverage_cache
+    now = time.monotonic()
+    if _coverage_cache is not None:
+        cached_at, cached_response = _coverage_cache
+        if now - cached_at < _COVERAGE_CACHE_TTL_SECONDS:
+            return cached_response
+
     # Mirrors `trigger_engine.rulestore.RuleStore.coverage()`'s semantics
     # exactly, but reads the persisted document/rule repositories directly
     # instead of re-scanning `data/processed/` from disk on every request.
@@ -133,7 +157,7 @@ async def get_coverage(
         district_states[district_key(document.district)].add(state_key(document.state))
     collisions = sum(1 for states in district_states.values() if len(states) > 1)
 
-    return CoverageResponse(
+    response = CoverageResponse(
         documents=len(documents),
         rules=len(rules),
         approved_rules=sum(1 for r in rules if r.review_status == ReviewStatus.APPROVED),
@@ -143,3 +167,5 @@ async def get_coverage(
         by_code=dict(by_code),
         by_review_status=dict(by_review_status),
     )
+    _coverage_cache = (now, response)
+    return response
