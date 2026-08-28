@@ -81,6 +81,17 @@ class InMemoryRuleRepository:
             rules = [r for r in rules if r.fields.state.casefold() == needle]
         return rules[offset : offset + limit]
 
+    async def count(
+        self, *, review_status: str | None = None, state: str | None = None
+    ) -> int:
+        rules = list(self._rules.values())
+        if review_status is not None:
+            rules = [r for r in rules if r.review_status == review_status]
+        if state is not None:
+            needle = state.casefold()
+            rules = [r for r in rules if r.fields.state.casefold() == needle]
+        return len(rules)
+
     async def update(self, rule: DACPRule) -> DACPRule:
         self._rules[rule.id] = rule
         return rule

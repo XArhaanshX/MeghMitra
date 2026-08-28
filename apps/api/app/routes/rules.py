@@ -27,11 +27,17 @@ async def list_rules(
         fetch = lambda **kw: service.list_advisory_eligible(  # noqa: E731
             district=district, state=state, **kw
         )
+        count = lambda: service.count_advisory_eligible(  # noqa: E731
+            district=district, state=state
+        )
     else:
         fetch = lambda **kw: service.list(  # noqa: E731
             review_status=review_status, district=district, state=state, **kw
         )
-    return await paginated(fetch, limit=limit, offset=offset)
+        count = lambda: service.count(  # noqa: E731
+            review_status=review_status, district=district, state=state
+        )
+    return await paginated(fetch, limit=limit, offset=offset, count=count)
 
 
 @router.get("/rules/{rule_id}")

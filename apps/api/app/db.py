@@ -214,6 +214,21 @@ class PostgresRuleRepository:
             )
         return [_rule_from_row(row) for row in rows]
 
+    async def count(
+        self, *, review_status: str | None = None, state: str | None = None
+    ) -> int:
+        conditions: list[str] = []
+        params: list[object] = []
+        if review_status is not None:
+            params.append(review_status)
+            conditions.append(f"review_status = ${len(params)}")
+        if state is not None:
+            params.append(state)
+            conditions.append(f"state_code ILIKE ${len(params)}")
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        async with self._pool.acquire() as conn:
+            return await conn.fetchval(f"SELECT COUNT(*) FROM extracted_rules {where}", *params)
+
     async def update(self, rule: DACPRule) -> DACPRule:
         async with self._pool.acquire() as conn:
             await conn.execute(

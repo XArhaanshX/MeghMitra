@@ -41,6 +41,9 @@ class RuleRepository(Protocol):
         limit: int = 50,
         offset: int = 0,
     ) -> list[DACPRule]: ...
+    async def count(
+        self, *, review_status: str | None = None, state: str | None = None
+    ) -> int: ...
     async def update(self, rule: DACPRule) -> DACPRule: ...
 
 

@@ -29,7 +29,10 @@ async def review_queue(
     service: ReviewService = Depends(get_review_service),
 ) -> list[DACPRule] | dict[str, object]:
     return await paginated(
-        lambda **kw: service.review_queue(state=state, **kw), limit=limit, offset=offset
+        lambda **kw: service.review_queue(state=state, **kw),
+        limit=limit,
+        offset=offset,
+        count=lambda: service.count_review_queue(state=state),
     )
 
 

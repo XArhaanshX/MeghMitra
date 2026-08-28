@@ -114,6 +114,27 @@ class RuleService:
         rules = [r for r in rules if r.fields.district == district]
         return rules[offset : offset + limit]
 
+    async def count(
+        self,
+        *,
+        review_status: ReviewStatus | None = None,
+        district: str | None = None,
+        state: str | None = None,
+    ) -> int:
+        review_status_value = review_status.value if review_status else None
+        if district is None:
+            return await self.rules.count(review_status=review_status_value, state=state)
+        # Same reasoning as `list()`: `district` isn't a repository-level
+        # filter, so an exact count needs the same unbounded fetch+filter as
+        # a district-scoped page already does. Uncommon path (most callers
+        # -- the frontend's count badges -- never pass `district`); the
+        # common, cheap path above is what `paginated()`'s stampede-prone
+        # "total" computation actually needed.
+        rules = await self.rules.list(
+            review_status=review_status_value, state=state, limit=UNBOUNDED_LIMIT, offset=0
+        )
+        return sum(1 for r in rules if r.fields.district == district)
+
     async def list_advisory_eligible(
         self,
         *,
@@ -136,6 +157,15 @@ class RuleService:
             offset=offset,
         )
         return [r for r in rules if is_advisory_eligible(r)]
+
+    async def count_advisory_eligible(
+        self, *, district: str | None = None, state: str | None = None
+    ) -> int:
+        # `is_advisory_eligible` == APPROVED + a valid citation, and the
+        # `approved_rules_require_citation` DB CHECK constraint already
+        # guarantees every APPROVED row has one -- see the docstring above.
+        # Counting APPROVED rows is therefore exact, not an approximation.
+        return await self.count(review_status=ReviewStatus.APPROVED, district=district, state=state)
 
     async def citation_for(self, rule_id: UUID) -> Citation:
         rule = await self.get(rule_id)
@@ -196,6 +226,9 @@ class ReviewService:
         return await self.rules.list(
             review_status=ReviewStatus.NEEDS_REVIEW.value, state=state, limit=limit, offset=offset
         )
+
+    async def count_review_queue(self, *, state: str | None = None) -> int:
+        return await self.rules.count(review_status=ReviewStatus.NEEDS_REVIEW.value, state=state)
 
     async def approve(self, rule_id: UUID, *, reviewed_by: str) -> DACPRule:
         rule = await self._get(rule_id)

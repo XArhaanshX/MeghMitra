@@ -93,6 +93,7 @@ async def paginated(
     *,
     limit: int | None,
     offset: int | None,
+    count: Callable[[], Awaitable[int]] | None = None,
     default_limit: int = 50,
     count_limit: int = 1_000_000,
 ) -> list[Any] | dict[str, Any]:
@@ -105,15 +106,25 @@ async def paginated(
     lambda). Returns the bare list when the caller passed neither `limit`
     nor `offset` explicitly -- so existing clients/tests that never asked
     for pagination keep getting exactly what they got before. Opting in to
-    either one switches to `{"items", "total", "limit", "offset"}`, with
-    `total` from a second, unbounded fetch of the same filters (there is no
-    separate COUNT query in any repository Protocol)."""
+    either one switches to `{"items", "total", "limit", "offset"}`.
+
+    `total` prefers `count()` -- a real repository-level `COUNT(*)`
+    (`RuleRepository.count`) -- when the caller supplies one. Without it,
+    falls back to `len()` of a second, unbounded fetch of the same filters:
+    correct but expensive (this is what re-fetched and re-deserialized the
+    entire corpus on every `?limit=1` count-badge request from the
+    frontend, and OOM'd the API in production once the corpus grew from
+    the ~180-row demo seed to the ~9.4k-row full India ingestion -- see
+    2026-08-28 in the vps GitOps changelog). Every current caller of this
+    function passes `count` for exactly that reason; the fallback exists
+    for future callers whose repository doesn't have a count method yet.
+    """
     if limit is None and offset is None:
         return await fetch(limit=default_limit, offset=0)
     effective_limit = default_limit if limit is None else limit
     effective_offset = 0 if offset is None else offset
     page = await fetch(limit=effective_limit, offset=effective_offset)
-    total = len(await fetch(limit=count_limit, offset=0))
+    total = await count() if count is not None else len(await fetch(limit=count_limit, offset=0))
     return {
         "items": page,
         "total": total,
