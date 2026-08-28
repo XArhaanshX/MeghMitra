@@ -35,9 +35,15 @@ _TOKEN_RE = re.compile(
 
 
 def fetch_index(url: str = INDEX_URL) -> str:
+    # Matches try_fetch's own resilience (retry + generous timeout): this
+    # single request is a hard prerequisite for the whole run, and cluster
+    # egress to icar-crida.res.in has shown real, repeated multi-attempt
+    # timeouts (not just a one-off blip) at a bare 30s with no retry.
     result = subprocess.run(
-        ["curl", "-sL", "--max-time", "30", "-A", USER_AGENT, url],
+        ["curl", "-sL", "--max-time", "60", "--retry", "3", "--retry-delay", "2",
+         "-A", USER_AGENT, url],
         capture_output=True,
+        timeout=90,
         check=True,
     )
     return result.stdout.decode("utf-8", errors="ignore")
